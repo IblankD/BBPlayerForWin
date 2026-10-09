@@ -1,9 +1,10 @@
-import { app, BrowserWindow, ipcMain, protocol, safeStorage, session, dialog, globalShortcut, Tray, Menu, screen } from 'electron';
+import { app, BrowserWindow, ipcMain, protocol, safeStorage, session, dialog, globalShortcut, Tray, Menu, screen, net, shell } from 'electron';
 import { readFile, writeFile, rename, mkdir } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { BilibiliClient } from './api.mjs';
 import { validateLibrary, validateSession } from './core.mjs';
+import { ReleaseUpdater, fetchWithElectron } from './updater.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const devUrl = !app.isPackaged && process.env.BBPLAYER_DEV_URL === 'http://127.0.0.1:5173' ? process.env.BBPLAYER_DEV_URL : null;
@@ -18,6 +19,8 @@ let window;
 let client;
 let library;
 let playerSession = validateSession();
+let updater;
+let updateTimer;
 let tray;
 let trayMenu;
 let quitting = false;
@@ -80,6 +83,13 @@ function handle(channel, fn) {
   });
 }
 async function initialize() {
+  updater = new ReleaseUpdater({ version: app.getVersion(), portable: !!process.env.PORTABLE_EXECUTABLE_FILE, enabled: app.isPackaged, directory: location('updates'), fetcher: (url, options) => fetchWithElectron(net, url, options), notify: state => { if (window && !window.isDestroyed()) window.webContents.send('update:state', state); }, openExternal: url => shell.openExternal(url), launchInstaller: file => shell.openPath(file), prepareInstall: async () => { await flushRenderer(); await writing; }, quit: () => app.quit() });
+  handle('update:state', () => updater.state);
+  handle('update:check', () => updater.check());
+  handle('update:download', () => updater.download());
+  handle('update:cancel', () => updater.cancel());
+  handle('update:install', () => updater.install());
+  handle('update:openRelease', () => updater.openRelease());
   try { playerSession = validateSession(JSON.parse(await readFile(location('session.json'), 'utf8'))); } catch { /* Older versions have no session. */ }
   try { library = validateLibrary(JSON.parse(await readFile(location('library.json'), 'utf8'))); }
   catch (error) {
@@ -109,6 +119,9 @@ async function initialize() {
   handle('player:status', input => {
     playerInfo = { title: typeof input?.title === 'string' ? input.title.slice(0, 500) : '', playing: input?.playing === true };
     refreshTray();
+    if (app.isPackaged) {
+      updateTimer = setTimeout(() => { void updater.check(); updateTimer = setInterval(() => { void updater.check(); }, 6 * 3600000); }, 10000);
+    }
   });
   handle('library:save', async input => { const next = validateLibrary(input); await enqueueWrite('library.json', JSON.stringify(next)); library = next; });
   handle('library:export', async () => {
@@ -224,4 +237,4 @@ app.on('before-quit', event => {
   quitting = true;
   void captureGeometry().catch(() => {}).then(flushRenderer).then(() => writing.catch(() => {})).finally(() => { drained = true; app.quit(); });
 });
-app.on('will-quit', () => { globalShortcut.unregisterAll(); tray?.destroy(); });
+app.on('will-quit', () => { clearTimeout(updateTimer); clearInterval(updateTimer); updater?.cancel(); globalShortcut.unregisterAll(); tray?.destroy(); });

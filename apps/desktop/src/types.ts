@@ -5,7 +5,15 @@ export interface Account { mid: number; name: string }
 export interface Favorite { id: number; title: string; count: number }
 export interface Part { cid: number; title: string; duration: number }
 export interface PlayerSession { queue: Track[]; current: Track | null; position: number; shuffle: boolean; view: string; closeBehavior: 'ask' | 'tray' | 'quit' }
+export interface UpdateState { status: 'idle' | 'checking' | 'available' | 'current' | 'downloading' | 'ready' | 'installing' | 'error'; currentVersion: string; latestVersion: string; notes: string; releaseUrl: string; portable: boolean; enabled: boolean; progress: number; error: string; canDownload: boolean; checkedAt?: number }
 export interface Desktop {
+  updateState(): Promise<UpdateState>;
+  checkUpdate(): Promise<UpdateState>;
+  downloadUpdate(): Promise<UpdateState>;
+  cancelUpdate(): Promise<void>;
+  installUpdate(): Promise<UpdateState>;
+  openRelease(): Promise<void>;
+  onUpdate(callback: (value: UpdateState) => void): () => void;
   loadSession(): Promise<PlayerSession>;
   saveSession(input: PlayerSession): Promise<void>;
   setCloseBehavior(value: PlayerSession['closeBehavior']): Promise<void>;

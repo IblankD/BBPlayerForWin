@@ -15,6 +15,7 @@
 - 0.1.2：音频错误和缓冲超时后刷新地址，断网重连恢复，保留分 P 和进度；最多重试 3 次，暂停取消自动恢复。
 - 托盘后台播放和菜单控制，关闭时询问或按偏好后台播放/退出。
 - 启动后恢复队列、当前歌曲、进度、随机模式、本地页面、窗口和关闭偏好，保持暂停。
+- 0.1.3：正式 Release 版本检查，安装版下载后校验 SHA256、由用户确认安装；便携版提供发布页入口，GitHub API 限流时使用发布页备用版本检查。
 
 ## 开发与构建
 
@@ -31,6 +32,7 @@ pnpm --dir apps/desktop test
 pnpm --dir apps/desktop smoke
 pnpm --dir apps/desktop smoke:portable
 pnpm --dir apps/desktop dist:win
+pnpm --dir apps/desktop smoke:update
 ```
 
 安装包在 `apps/desktop/release`。桌面有独立的 pnpm workspace/lockfile，避免安装 Android/Expo 工具链；根 workspace 的已有 mobile 检查仍需根依赖。
@@ -55,12 +57,15 @@ pnpm --dir apps/desktop dist:win
 - `bbmedia://audio/<token>`：仅转发 API 返回的可信 B 站 CDN，支持 Range/206；不向渲染进程暴露 Cookie，不向 CDN 发送账户凭据。
 - `src`：桌面 UI 和 HTMLAudio 播放。纯 Web 版需要另配 API/音频服务。
 - `src/player.ts`：带请求代次的播放控制器，负责新地址加载、进度恢复、有界重试与断网恢复；`usePlayback.ts` 将它接入 React。
+- `electron/updater.mjs`：固定 GitHub Release 来源、语义版本比较、可信下载重定向、文件大小与 SHA256 校验。主进程使用 Electron net 获取更新，以支持系统代理。
 - `tests`：签名、存储往返、登录、CDN/重定向限制、Range 流和歌词解析检查。
 - `scripts/smoke.mjs`：启动真实 Electron，播放公开 MV、拖动进度、保存歌单和重启验收；使用独立临时数据目录，不改变用户账号。
 
 账户用 Electron safeStorage（Windows DPAPI）加密，歌单保存在 Electron userData 目录。JSON 备份不包含登录凭据。
 
 `session.json` 单独保存队列和使用状态，每 5 秒保存进度，正常退出前再保存一次；`window.json` 保存窗口位置和大小。重启时不复用临时音频 URL，点击播放后获取新地址。JSON 歌单备份不包含这两种状态文件。
+
+旧版需先手动覆盖安装 0.1.3 一次，后续可通过左下角“检查更新”下载并校验安装包。点击安装后保存状态、打开 NSIS 向导并退出程序，需完成向导；便携版需退出后自行替换程序。启动后 10 秒检查更新，此后每 6 小时检查，仅正式 Release 生效。开发环境只检查版本，不下载或安装。
 
 ## 首版范围
 

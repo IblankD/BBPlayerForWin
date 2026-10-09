@@ -1,4 +1,4 @@
-# Windows 0.1.2 验收记录
+# Windows 0.1.3 验收记录
 
 验收日期：2026-10-09。平台：Windows x64，Node 24.12.0，Electron 44.6.0。
 
@@ -6,12 +6,12 @@
 
 - `pnpm --dir apps/desktop type-check`：TypeScript 检查通过。
 - `pnpm --dir apps/desktop lint`：桌面 UI、主进程、预加载和测试脚本检查通过。
-- `pnpm --dir apps/desktop test`：18 项测试全部通过，包括 WBI 签名、账户凭据隔离、CDN 重定向限制、Range/206、存储往返、歌词解析，以及使用状态迁移、过期地址恢复、断网恢复、旧请求隔离、暂停取消重试、不可用视频停止重试、有界重试和缓冲超时。
+- `pnpm --dir apps/desktop test`：28 项测试全部通过。覆盖签名、账户隔离、CDN/Range、存储、歌词和播放恢复，以及语义版本比较、更新来源限制、文件大小和 SHA256、安装前再次校验、取消下载、可信重定向、限流备用检查、开发/便携模式限制和安装请求顺序。
 - `pnpm --dir apps/desktop dist:win`：安装包、便携程序和解包后的应用全部生成。
 - 开发 Electron 和打包后 `release/win-unpacked/BBPlayer.exe` 均通过完整烟雾测试。
 - 发布便携程序通过 `pnpm --dir apps/desktop smoke:portable` 的实际启动、搜索、播放、拖动进度、暂停和关闭测试。
 
-真实接口验收使用公开 MV `BV1GJ411x7h7`。HTMLAudio 识别的时长为 212.308833 秒，播放后 readyState 为 4。便携版实际跳转到 60.011303 秒并暂停，渲染进程没有运行错误。
+真实接口验收使用公开 MV `BV1GJ411x7h7`。HTMLAudio 识别的时长为 212.308833 秒，播放后 readyState 为 4。便携版实际跳转到 60.004887 秒并暂停，渲染进程没有运行错误。
 
 沿用 0.1.1 的蓝白主题和 7 尺寸 ICO；新增关闭偏好设置，已检查实际界面显示。
 
@@ -27,12 +27,19 @@
 - 重启后恢复队列、当前视频与分 P、60 秒进度、随机模式、音量、本地歌单页面、关闭偏好和窗口位置/尺寸；保持暂停且不加载旧音频地址，点击播放后取得新地址继续。
 - Windows 分数缩放允许最多 2 像素的窗口恢复舍入差异；验证连续保存不会累积尺寸偏差。
 
+## 更新功能验收
+
+- `pnpm --dir apps/desktop smoke:update`：在真实打包应用中打开更新界面，读取正式发布版本。验收时公共 API 限流，通过 GitHub 最新发布页确认版本；该次检查读到当前 0.1.3、当时已发布的 0.1.1。
+- 使用模拟未来版本和小型安装包数据，执行实际 IPC、文件下载、SHA256 校验、安装按钮及退出前保存流程；仅在网络和系统执行边界替换响应，确认下载后不会自行运行安装包。
+- 点击“退出并安装更新”后，再次校验文件、保存歌单，并请求打开指定安装包和退出。系统启动函数由测试记录代替，**未执行真实安装向导或覆盖现有安装**。
+- 更新界面截图保存在 `test-results/desktop-updates.png`。版本说明按普通文本显示。
+
 ## 产物
 
 | 文件 | 字节数 | SHA256 |
 | --- | ---: | --- |
-| `release/BBPlayer-0.1.2-x64-Portable.exe` | 114254647 | `C3BDFEA688BD6A97EB8C93B85B1BC9FA2386FEF49F495035C3BF051D7C70D3E3` |
-| `release/BBPlayer-0.1.2-x64-Setup.exe` | 114554814 | `E19C5D0D3E876093B4FB28ED06939DCAF004CFA7C2E4D0147D74FBD84B20F1FC` |
+| `release/BBPlayer-0.1.3-x64-Portable.exe` | 114258673 | `92DB1EDA0D11BBCE931C767CAD4D80E98CAB8154969F9CA28B72DA14E2E0CDD4` |
+| `release/BBPlayer-0.1.3-x64-Setup.exe` | 114558892 | `4A774C56774D2FACEF0E74A82E5709D690B322A10E60BCCFC538016CAB69AE57` |
 
 界面截图位于 `test-results/desktop-home.png`、`desktop-playback.png`、`desktop-settings.png` 和 `portable-playback.png`。主页截图另有根目录 `docs/images/desktop-home.png`，供 README 展示；其余验收截图和构建产物在本地保留，不纳入源码。
 

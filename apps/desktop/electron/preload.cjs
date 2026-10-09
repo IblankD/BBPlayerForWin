@@ -5,6 +5,17 @@ const invoke = async (channel, ...args) => {
   return result.value;
 };
 contextBridge.exposeInMainWorld('desktop', {
+  updateState: () => invoke('update:state'),
+  checkUpdate: () => invoke('update:check'),
+  downloadUpdate: () => invoke('update:download'),
+  cancelUpdate: () => invoke('update:cancel'),
+  installUpdate: () => invoke('update:install'),
+  openRelease: () => invoke('update:openRelease'),
+  onUpdate: callback => {
+    const listener = (_event, value) => callback(value);
+    ipcRenderer.on('update:state', listener);
+    return () => ipcRenderer.removeListener('update:state', listener);
+  },
   loadSession: () => invoke('session:load'),
   saveSession: input => invoke('session:save', input),
   setCloseBehavior: value => invoke('session:closeBehavior', value),

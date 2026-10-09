@@ -88,7 +88,7 @@ try {
   await page.getByRole('button', { name: '播放', exact: true }).click();
   await page.waitForFunction(() => !document.querySelector('audio').paused);
   await page.getByRole('button', { name: '关闭', exact: true }).click();
-  await page.waitForFunction(async () => (await window.desktop.loadSession()).closeBehavior === 'tray');
+  await expect.poll(async () => (await page.evaluate(() => window.desktop.loadSession())).closeBehavior).toBe('tray');
   await expect.poll(() => app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].isVisible()), { timeout: 10000 }).toBe(false);
   const trayAction = async label => app.evaluate((_electron, label) => {
     const item = globalThis.bbplayerSmokeMenu?.items.find(item => item.label === label);
