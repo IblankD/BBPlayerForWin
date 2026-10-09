@@ -1,5 +1,6 @@
 packages:
   - apps/*
+  - '!apps/desktop' # Independent Electron workspace; build with pnpm --dir apps/desktop.
   - apps/*/web
   - packages/*
   - packages/*/example

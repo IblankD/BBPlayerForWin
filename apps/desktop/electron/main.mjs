@@ -1,0 +1,131 @@
+import { app, BrowserWindow, ipcMain, protocol, safeStorage, session, dialog, globalShortcut } from 'electron';
+import { readFile, writeFile, rename, mkdir } from 'node:fs/promises';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { BilibiliClient } from './api.mjs';
+import { validateLibrary } from './core.mjs';
+
+const here = path.dirname(fileURLToPath(import.meta.url));
+const devUrl = !app.isPackaged && process.env.BBPLAYER_DEV_URL === 'http://127.0.0.1:5173' ? process.env.BBPLAYER_DEV_URL : null;
+if (process.env.BBPLAYER_TEST_DATA && !app.isPackaged) app.setPath('userData', process.env.BBPLAYER_TEST_DATA);
+// Support an isolated profile for diagnostics, just as Chromium does.
+if (app.commandLine.hasSwitch('user-data-dir')) app.setPath('userData', path.resolve(app.commandLine.getSwitchValue('user-data-dir')));
+protocol.registerSchemesAsPrivileged([
+  { scheme: 'bbapp', privileges: { standard: true, secure: true, supportFetchAPI: true, corsEnabled: true } },
+  { scheme: 'bbmedia', privileges: { standard: true, secure: true, stream: true, supportFetchAPI: true, corsEnabled: true } },
+]);
+let window;
+let client;
+let library;
+let writing = Promise.resolve();
+const defaults = () => ({ playlists: [{ id: 'liked', name: '我喜欢的音乐', tracks: [] }], history: [], lyrics: {}, volume: 0.7, repeat: 'all' });
+const location = name => path.join(app.getPath('userData'), name);
+async function atomicWrite(name, content) {
+  await mkdir(app.getPath('userData'), { recursive: true });
+  await writeFile(location(`${name}.tmp`), content);
+  await rename(location(`${name}.tmp`), location(name));
+}
+function enqueueWrite(name, content) {
+  const next = writing.catch(() => {}).then(() => atomicWrite(name, content));
+  writing = next;
+  return next;
+}
+function trusted(event) {
+  const url = event.senderFrame?.url || '';
+  if (event.sender !== window?.webContents || event.senderFrame !== window.webContents.mainFrame || !(url.startsWith('bbapp://bundle/') || (devUrl && new URL(url).origin === devUrl))) throw new Error('请求来源无效');
+}
+function handle(channel, fn) {
+  ipcMain.handle(channel, async (event, ...args) => {
+    trusted(event);
+    try { return { ok: true, value: await fn(...args) }; }
+    catch (error) { return { ok: false, error: error instanceof Error ? error.message : '操作失败' }; }
+  });
+}
+async function initialize() {
+  try { library = validateLibrary(JSON.parse(await readFile(location('library.json'), 'utf8'))); }
+  catch (error) {
+    if (error.code !== 'ENOENT') {
+      await dialog.showMessageBox({ type: 'warning', title: '歌单暂时无法读取', message: '本地歌单数据无法读取，原文件会保留备份。', detail: '你可以从 JSON 备份恢复歌单。' });
+      try { await rename(location('library.json'), location(`library-corrupt-${Date.now()}.json`)); } catch { /* Preserve unreadable original. */ }
+    }
+    library = defaults();
+  }
+  let cookie = '';
+  try { cookie = safeStorage.decryptString(await readFile(location('account.bin'))); } catch { /* First launch or expired OS credentials. */ }
+  client = new BilibiliClient({ cookie, onCookie: async value => {
+    if (value && !safeStorage.isEncryptionAvailable()) throw new Error('Windows 凭据加密不可用，无法安全保存登录');
+    await enqueueWrite('account.bin', value ? safeStorage.encryptString(value) : Buffer.alloc(0));
+  } });
+  handle('library:load', () => library);
+  handle('library:save', async input => { const next = validateLibrary(input); await enqueueWrite('library.json', JSON.stringify(next)); library = next; });
+  handle('library:export', async () => {
+    const { canceled, filePath } = await dialog.showSaveDialog(window, { title: '导出歌单备份', defaultPath: 'BBPlayer-library.json', filters: [{ name: 'JSON', extensions: ['json'] }] });
+    if (canceled || !filePath) return false;
+    await writeFile(filePath, JSON.stringify(library, null, 2)); return true;
+  });
+  handle('library:import', async () => {
+    const { canceled, filePaths } = await dialog.showOpenDialog(window, { title: '导入歌单备份', filters: [{ name: 'JSON', extensions: ['json'] }], properties: ['openFile'] });
+    if (canceled) return null;
+    const raw = await readFile(filePaths[0], 'utf8');
+    if (raw.length > 20 * 1024 * 1024) throw new Error('备份文件过大');
+    const incoming = validateLibrary(JSON.parse(raw));
+    const playlists = library.playlists.map(p => ({ ...p, tracks: [...p.tracks] }));
+    for (const p of incoming.playlists) {
+      const existing = playlists.find(item => item.id === p.id);
+      if (existing) { const known = new Set(existing.tracks.map(t => t.bvid)); existing.tracks = [...existing.tracks, ...p.tracks.filter(t => !known.has(t.bvid))]; }
+      else playlists.push(p);
+    }
+    const next = validateLibrary({ ...library, playlists, lyrics: { ...library.lyrics, ...incoming.lyrics } });
+    await enqueueWrite('library.json', JSON.stringify(next)); library = next; return library;
+  });
+  handle('api:search', (keyword, page) => client.search(keyword, page));
+  handle('api:stream', (bvid, cid) => client.stream(bvid, cid));
+  handle('api:account', () => client.account());
+  handle('api:qrGenerate', () => client.qrGenerate());
+  handle('api:qrPoll', key => client.qrPoll(key));
+  handle('api:logout', () => client.logout());
+  handle('api:favorites', () => client.favorites());
+  handle('api:favoriteTracks', (id, page) => client.favoriteTracks(id, page));
+  handle('window:control', action => { if (action === 'minimize') window.minimize(); else if (action === 'maximize') { if (window.isMaximized()) window.unmaximize(); else window.maximize(); } else if (action === 'close') window.close(); });
+}
+async function createWindow() {
+  window = new BrowserWindow({ width: 1280, height: 850, minWidth: 980, minHeight: 680, frame: false, backgroundColor: '#f7f8fa', title: 'BBPlayer', icon: path.join(here, '../build/icon.ico'), show: false, webPreferences: { preload: path.join(here, 'preload.cjs'), nodeIntegration: false, contextIsolation: true, sandbox: true, webSecurity: true } });
+  window.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
+  window.webContents.on('will-navigate', (event, url) => { if (url !== (devUrl || 'bbapp://bundle/index.html')) event.preventDefault(); });
+  window.once('ready-to-show', () => window.show());
+  await window.loadURL(devUrl || 'bbapp://bundle/index.html');
+}
+const single = app.requestSingleInstanceLock();
+if (!single) app.quit();
+else {
+  app.on('second-instance', () => { if (window) { if (window.isMinimized()) window.restore(); window.show(); window.focus(); } });
+  app.whenReady().then(async () => {
+    session.defaultSession.setPermissionRequestHandler((_contents, _permission, callback) => callback(false));
+    protocol.handle('bbapp', async request => {
+      const url = new URL(request.url);
+      const root = path.resolve(here, '../dist');
+      const file = path.resolve(root, `.${decodeURIComponent(url.pathname)}`);
+      if (url.hostname !== 'bundle' || !file.startsWith(`${root}${path.sep}`)) return new Response('Forbidden', { status: 403 });
+      const types = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.svg': 'image/svg+xml', '.png': 'image/png' };
+      try {
+        return new Response(await readFile(file), { headers: { 'Content-Type': types[path.extname(file)] || 'application/octet-stream', 'Content-Security-Policy': "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://*.hdslb.com; media-src bbmedia:; connect-src 'self' bbmedia:; object-src 'none'; base-uri 'none'; frame-src 'none'" } });
+      } catch { return new Response('Not found', { status: 404 }); }
+    });
+    await initialize();
+    protocol.handle('bbmedia', async request => {
+      const url = new URL(request.url);
+      if (url.hostname !== 'audio' || !['GET', 'HEAD'].includes(request.method)) return new Response('Forbidden', { status: 403 });
+      try { return await client.fetchMedia(url.pathname.slice(1), request); } catch { return new Response('音频请求失败', { status: 502 }); }
+    });
+    await createWindow();
+    for (const [key, command] of [['MediaPlayPause', 'toggle'], ['MediaNextTrack', 'next'], ['MediaPreviousTrack', 'previous']]) globalShortcut.register(key, () => window?.webContents.send('player:command', command));
+  }).catch(async error => { await dialog.showMessageBox({ type: 'error', message: 'BBPlayer 启动失败', detail: error.message }); app.quit(); });
+}
+app.on('window-all-closed', () => app.quit());
+let drained = false;
+app.on('before-quit', event => {
+  if (drained) return;
+  event.preventDefault();
+  void writing.catch(() => {}).then(() => { drained = true; app.quit(); });
+});
+app.on('will-quit', () => globalShortcut.unregisterAll());

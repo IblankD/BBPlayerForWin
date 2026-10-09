@@ -3,11 +3,15 @@
 	"private": true,
 	"workspaces": [
 		"apps/*",
+		"!apps/desktop",
 		"apps/*/web",
 		"packages/*",
 		"packages/*/example"
 	],
 	"scripts": {
+		"desktop:dev": "pnpm --dir apps/desktop dev",
+		"desktop:build": "pnpm --dir apps/desktop build",
+		"desktop:dist": "pnpm --dir apps/desktop dist:win",
 		"check:deps": "syncpack lint --dependency-types dev,prod,peer,overrides",
 		"fix:deps": "syncpack fix --dependency-types dev,prod,peer,overrides",
 		"format": "oxfmt --write .",

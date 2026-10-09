@@ -1,0 +1,10 @@
+# Desktop can be built without downloading the Android/Expo toolchain.
+packages:
+  - .
+verifyDepsBeforeRun: false
+allowBuilds:
+  electron: true
+  electron-winstaller: false
+  esbuild: true
+minimumReleaseAgeExclude:
+  - electron@44.6.0

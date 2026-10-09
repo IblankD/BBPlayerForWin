@@ -1,150 +1,195 @@
-<div align="center">
-<img src="./apps/mobile/assets/images/icon_large.png" alt="logo" width="50" />
-<h1>BBPlayer</h1>
+# BBPlayerForWin
 
-一款使用 React Native 构建的本地优先的 Bilibili 音频播放器。更轻量 & 舒服的听歌体验，远离臃肿卡顿的 Bilibili 客户端。
+基于 [BBPlayer](https://github.com/bbplayer-app/BBPlayer) 开发的 Windows 桌面 Bilibili 音频播放器。使用 React + Electron，让搜索、收藏夹和本地歌单在电脑上播放。
 
-[![GitHub Release](https://img.shields.io/github/v/release/yanyao2333/bbplayer?style=flat-square)](https://github.com/bbplayer-app/bbplayer/releases)
-![React Native](https://img.shields.io/badge/React%20Native-20232A?style=flat-square&logo=react&logoColor=sky)
-[![Website](https://img.shields.io/badge/Website-bbplayer.roitium.com-blue?style=flat-square)](https://bbplayer.roitium.com)
+当前版本为 **0.1.0，Windows 桌面首版**。本仓库保留上游 monorepo，桌面应用位于 [`apps/desktop`](./apps/desktop)，采用独立依赖。项目为社区移植，与 Bilibili 官方无关联。
 
-</div>
+![BBPlayerForWin 桌面界面](./docs/images/desktop-home.png)
 
----
+## 功能与当前范围
 
-**[前往官网查看更多详情和上手指南 ➔](https://bbplayer.roitium.com)**
+| 功能 | 当前支持情况 |
+| --- | --- |
+| 搜索 | 歌名、UP 主关键词、BV 号、完整 B 站视频链接，支持分页 |
+| 播放 | AAC 音频、播放/暂停、进度拖动、音量、上一首/下一首 |
+| 播放队列 | 队列查看、随机播放、单曲循环、列表循环、顺序播放 |
+| 多分 P 视频 | 在播放队列弹窗中选择当前视频的分 P |
+| 登录与收藏夹 | B 站 App 扫码登录、退出登录、读取账号创建的收藏夹 |
+| 本地音乐库 | 新建/删除歌单、添加/移除歌曲、喜欢、最近播放、自动保存 |
+| 歌词 | 手动粘贴 LRC 歌词并按播放时间高亮 |
+| 备份 | JSON 歌单导入、合并、导出，备份不包含登录凭据 |
+| Windows 操作 | 窗口最小化/最大化、系统媒体按键、键盘快捷键 |
+| 分发 | Windows x64 安装包、便携版构建 |
 
-## 屏幕截图
+首版尚未移植离线下载、音频文件导出、自动歌词匹配、桌面悬浮歌词、网易云/QQ 歌单导入和 Android 主题装扮。暂不支持 b23.tv 短链接、AV 号输入及 macOS/Linux 分发。
 
-|                  首页                  |                   播放器                   |                    播放列表                    |                    歌词页                    |                    库页面                    |
-| :------------------------------------: | :----------------------------------------: | :--------------------------------------------: | :------------------------------------------: | :------------------------------------------: |
-| ![home](./assets/screenshots/home.jpg) | ![player](./assets/screenshots/player.jpg) | ![playlist](./assets/screenshots/playlist.jpg) | ![download](./assets/screenshots/lyrics.jpg) | ![library](./assets/screenshots/library.jpg) |
+## 使用方法
 
-## 主要功能
+### Windows 用户
 
-### 核心播放体验
+运行环境为 **Windows 10/11 x64**。源码仓库不包含构建后的 `.exe`，目前也未发布 GitHub Release；可按下文构建后使用。
 
-- **Bilibili 登录**: 支持通过**扫码**、**手机号（短信验证码）**或手动设置 Cookie 登录。
-- **播放源**: 自由添加本地播放列表，登录账号后也可直接访问账号内收藏夹、订阅合集等，兼顾快速与方便。
-- **导入外部歌单**: 支持从 **网易云音乐** 和 **QQ 音乐** 的歌单自动匹配到 B 站视频并保存为播放列表。
-- **全功能播放器**: 提供播放/暂停、循环、随机、播放队列、响度均衡、断点续播、启动自动播放等功能。
-- **搜索**: 智能搜索，支持 BV/AV 号、b23.tv 短链解析。同时提供收藏夹和本地播放列表内搜索。
+构建输出在 `apps/desktop/release/`：
 
-### 歌词系统
+- `BBPlayer-0.1.0-x64-Portable.exe`：便携版，双击运行，无需安装。
+- `BBPlayer-0.1.0-x64-Setup.exe`：安装版，可选择安装目录并创建桌面快捷方式。
 
-- **支持 SPL**: 基于 [SPL 规范](https://bbplayer.roitium.com/SPL)，支持**逐字进度**、**罗马音注音**及**翻译歌词**展示。
-- **智能获取**: 支持自动匹配歌词（网易云/QQ 音乐/酷狗音乐），并支持手动搜索、粘贴 LRC/SPL 文本及偏移量调整。
-- **多样展示**: 支持桌面歌词（悬浮窗）、状态栏歌词。
+当前产物尚未代码签名。
 
-### 主题系统
+### 开始听歌
 
-可以在软件内搜索并应用**任意**b 站主题装扮，支持：
+1. 在顶部搜索框输入歌名、UP 主、BV 号或完整视频链接，按 Enter 搜索。
+2. 点击结果左侧播放按钮或歌曲标题。底部播放器支持暂停、拖动进度和音量调整。
+3. 点击爱心加入“我喜欢的音乐”；点击加号将歌曲加入歌单。侧栏“我的歌单”旁的加号用于新建歌单。
+4. 点击左下角“登录 B 站账号”，使用哔哩哔哩 App 扫码，并在手机上确认。登录后进入“B 站收藏夹”。
+5. 点击底部歌词图标，粘贴带时间标签的 LRC 文本并保存。首版需要手动提供歌词。
+6. 点击“歌单备份与设置”，导出 JSON 备份，或导入已有备份并合并歌单。
 
-- 导航栏
-- 开屏动画
-- 进度条拖拽图标
-- 点赞动画
-- 页面头部背景
-- 头像框
+示例 LRC：
 
-### 其他特性
+```text
+[00:00.00]第一行歌词
+[00:05.50]第二行歌词
+```
 
-- **下载与导出**: 支持缓存歌曲并离线播放，提供简单实用的下载管理。同时支持将已缓存的歌曲导出为带封面、元数据、内嵌歌词的 `.m4a` 文件到本地存储。
-- **UI**: 支持浅色/深色模式，UI 深度适配 Material Design 3 且支持莫奈取色。
-- **实用工具**: 提供定时关闭、播放历史统计（排行榜）等功能。
+| 快捷键 | 操作 |
+| --- | --- |
+| 空格 | 播放 / 暂停；输入文字或打开弹窗时不触发 |
+| Ctrl + → | 下一首 |
+| Ctrl + ← | 上一首；当前播放超过 3 秒时先回到曲首 |
+| 键盘媒体键 | 播放/暂停、上一首、下一首 |
 
-还有更多功能和惊喜，欢迎到[官网](https://bbplayer.roitium.com)查看喵！
+本地歌单和歌词会自动保存。此处的“本地歌单”保存视频引用和元数据，播放 B 站音频仍需要联网；未登录也可以搜索、播放允许匿名访问的公开视频。
 
-## 技术栈
+## 从源码运行与构建
 
-- **框架**: React Native, Expo
-- **状态管理**: Zustand
-- **数据请求**: React Query
-- **UI**: Material Design 3 (React Native Paper + ExpoUI)
-- **播放库**: [@bbplayer/orpheus](./packages/orpheus) (基于 Media3)
-- **ORM**: Drizzle ORM
+### 环境
 
-## 项目结构 (Monorepo)
+- Windows 10/11 x64
+- Node.js 24 LTS；当前验收版本为 24.12.0
+- pnpm 11.21.0，与桌面应用的 `packageManager` 配置一致
+- Git
 
-- **[apps/mobile](./apps/mobile)**: BBPlayer 移动端应用核心代码。
-- **[apps/backend](./apps/backend)**: 后端服务，提供歌单共享与软件更新查询（Cloudflare Worker）。
-- **[apps/docs](./apps/docs)**: 项目文档站点。
-- **[apps/update-publisher](./apps/update-publisher)**: 用于发布更新的工具。
-- **[packages/](./packages)**: 共享库与工具包。
-  - **[@bbplayer/splash](./packages/splash)**: 歌词解析与转换核心库。
-  - **[@bbplayer/eslint-plugin](./packages/eslint-plugin)**: BBPlayer 专用 lint 规则（通过 oxlint jsPlugins 运行）。
-  - **[@bbplayer/orpheus](./packages/orpheus)**: 基于 Media3 的音频播放引擎。
-  - **[@bbplayer/logs](./packages/logs)**: 日志库。
-  - **[@bbplayer/image-theme-colors](./packages/image-theme-colors)**: 封面颜色提取工具。
-  - **[@bbplayer/native](./packages/native)**: BBPlayer 原生能力集成模块。
-  - **[@bbplayer/heatmap](./packages/heatmap)**: 基于 SVG 的日期热力图组件。
-  - **[expo-wavy-slider](./packages/expo-wavy-slider)**: Jetpack Compose WavySlider 的 Expo 模块封装。
+以下命令在克隆后的仓库根目录执行。只开发桌面版时，安装 `apps/desktop` 的依赖即可，无需 Android SDK、Java、Expo 或根目录移动端依赖。
 
-## IOS 支持
+```powershell
+git clone https://github.com/IblankD/BBPlayerForWin.git
+cd BBPlayerForWin
+pnpm --dir apps/desktop install --frozen-lockfile
+pnpm --dir apps/desktop dev
+```
 
-曾经对 IOS 进行了基础适配，但现在重心依旧在 Android 端上，IOS 端没有同步开发，不保证可以编译成功。
+启动已构建的本地应用：
 
-## 隐私与数据统计
+```powershell
+pnpm --dir apps/desktop build
+pnpm --dir apps/desktop start
+```
 
-为了持续改进 BBPlayer，应用内集成了一套轻量级的匿名数据收集系统（包含 Firebase Analytics 和 Sentry）。
+生成 Windows 安装包和便携程序：
 
-### 我们收集什么？
+```powershell
+pnpm --dir apps/desktop dist:win
+```
 
-1. **使用数据**：功能使用频率、播放会话时长等。
-2. **崩溃报告**：应用崩溃时的堆栈信息，帮助我们修复 Bug。
+仅生成解包后的应用目录：
 
-### 隐私承诺
+```powershell
+pnpm --dir apps/desktop pack
+# 运行 apps/desktop/release/win-unpacked/BBPlayer.exe
+```
 
-- **匿名**：所有数据均**不包含个人身份信息**。
-- **透明**：我们不会收集任何与账号隐私相关的信息（如 Cookie 内容、浏览历史明细等）。所有统计代码均开源可见。
-- **控制权**：你可以随时在「设置 -> 通用设置」中关闭「分享数据（崩溃报告 & 匿名统计）」开关，完全停止数据上传。
+首次安装会下载 Electron，首次打包还会下载 NSIS 等构建工具，需要网络连接。若下载受网络环境影响，可以使用经过信任的镜像配置；不要关闭证书校验。
 
-## 捐赠支持
+### 开发检查
 
-如果你觉得 BBPlayer 对你有所帮助，欢迎考虑捐赠支持，你的所有捐赠都将用于让 Roitium 吃顿疯狂星期四或是买一部 GalGame！
+```powershell
+pnpm --dir apps/desktop type-check
+pnpm --dir apps/desktop lint
+pnpm --dir apps/desktop test
+pnpm --dir apps/desktop build
+pnpm --dir apps/desktop smoke
+# 完成 dist:win 后验收便携启动器
+pnpm --dir apps/desktop smoke:portable
+```
 
-<table>
-<tr>
-<td align="center">
-<details>
-<summary>微信支付</summary>
-<br />
-<img src="./apps/mobile/assets/images/wechat.png" alt="WeChat Donation" width="200" />
-</details>
-</td>
-<td align="center">
-<details>
-<summary>支付宝</summary>
-<br />
-<img src="./apps/mobile/assets/images/alipay.jpg" alt="Alipay Donation" width="200" />
-</details>
-</td>
-</tr>
-</table>
+`smoke` 会启动真实 Electron，使用独立临时数据目录，访问 B 站公开 MV，验证播放、拖动进度、歌单保存、歌词、备份及重启恢复，因此需要联网。便携启动器使用单独的验收脚本，详情见 [验收记录](./apps/desktop/VERIFICATION.md)。
 
-## 感谢
+根目录的 `pnpm type-check` / `pnpm lint` 属于上游 monorepo 检查，需要另外安装上游根依赖。桌面版有独立 workspace 和锁文件，并从根 workspace 中排除，使用上述桌面命令检查。
 
-本项目开发过程中很多功能和设计的灵感都来自前辈们，包括但不限于：
+## 基本架构与运行原理
 
-- [AzusaPlayer](https://github.com/lovegaoshi/azusa-player-mobile)
-- [BiliSound](https://github.com/bilisound/client-mobile)
-- [Salt Player](https://github.com/Moriafly/SaltPlayerSource)
-- [Spotify](https://spotify.com)
+```mermaid
+flowchart LR
+    UI[React 桌面界面] -->|受限 IPC| Main[Electron 主进程]
+    Main -->|WBI 签名与账户请求| API[Bilibili API]
+    API -->|视频信息与音频地址| Main
+    Main -->|可信 CDN 请求 / Range| CDN[Bilibili 音频 CDN]
+    Audio[HTMLAudio 播放器] -->|bbmedia 音频协议| Main
+    Main -->|流式响应 / HTTP 206| Audio
+    Main -->|原子写入| Library[本地 JSON 歌单]
+    Main -->|Windows DPAPI 加密| Credentials[本地账户凭据]
+```
 
-以及最重要的：[Bilibili](https://www.bilibili.com/)
+### 界面与播放
 
-在此表示感谢！（鞠躬）
+渲染进程使用 React、TypeScript 和 Vite，负责桌面布局、搜索结果、歌单、歌词及播放控制。音频由 Chromium 的 `HTMLAudioElement` 播放，歌词根据当前播放时间高亮；Windows 媒体操作通过 Electron 全局媒体快捷键和浏览器 Media Session 接入。
 
-## Star History
+### B 站接口与 WBI 签名
 
-<a href="https://www.star-history.com/?repos=bbplayer-app%2FBBPlayer&type=date&legend=top-left">
- <picture>
-   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=bbplayer-app/BBPlayer&type=date&theme=dark&legend=top-left&sealed_token=dX4uwZ7hHGaVsselUSXuc8sw1gVheSsQ-1WqJT_RWHZlQlGbnnxQ0tbT5Cmw8kJqwylH9pIZvI0AtnFj7rG3t3XxSUKCAuCK4AiBmKAmkksc1v9-hczB1ogKJEVVF_MrHS0DXPODyp_ZSG9fddCPA-oWZ_1zFWAGIwQSOQ6t3r-SLvzhHujJB-n7GJQ3" />
-   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=bbplayer-app/BBPlayer&type=date&legend=top-left&sealed_token=dX4uwZ7hHGaVsselUSXuc8sw1gVheSsQ-1WqJT_RWHZlQlGbnnxQ0tbT5Cmw8kJqwylH9pIZvI0AtnFj7rG3t3XxSUKCAuCK4AiBmKAmkksc1v9-hczB1ogKJEVVF_MrHS0DXPODyp_ZSG9fddCPA-oWZ_1zFWAGIwQSOQ6t3r-SLvzhHujJB-n7GJQ3" />
-   <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=bbplayer-app/BBPlayer&type=date&legend=top-left&sealed_token=dX4uwZ7hHGaVsselUSXuc8sw1gVheSsQ-1WqJT_RWHZlQlGbnnxQ0tbT5Cmw8kJqwylH9pIZvI0AtnFj7rG3t3XxSUKCAuCK4AiBmKAmkksc1v9-hczB1ogKJEVVF_MrHS0DXPODyp_ZSG9fddCPA-oWZ_1zFWAGIwQSOQ6t3r-SLvzhHujJB-n7GJQ3" />
- </picture>
-</a>
+网络请求由 Electron 主进程完成。搜索及音频地址接口沿用原项目的 WBI 参数签名算法：获取密钥、按映射表混排、排序并清理请求参数，加入时间戳后计算 MD5 签名。主进程负责账户 Cookie 和必要请求头，预加载脚本只向界面暴露搜索、播放、登录和歌单等明确操作。
 
-## 开源许可
+### 音频流转发
 
-本项目采用 MIT 许可。
+获取音频地址后，主进程生成临时 token，将 `bbmedia://audio/<token>` 交给播放器。自定义协议转发可信 B 站 CDN 的流式响应，同时转发 Range 请求和 Content-Range 等响应头，实现缓冲与进度拖动。
+
+主进程优先使用满足域名和端口限制的 CDN 地址；如果首选地址不符合要求，会选择接口提供的可信备用地址。重定向同样检查域名与协议。音频 CDN 请求不携带账号 Cookie。
+
+### 本地数据与隔离
+
+- `library.json` 保存歌单、历史、手动歌词、音量和循环偏好，通过临时文件加重命名完成原子写入。
+- `account.bin` 使用 Electron `safeStorage` 保存加密凭据，在 Windows 上由 DPAPI 保护。
+- 数据位于 Electron 的用户数据目录，通常在 `%APPDATA%` 下。移动程序文件不会同时移动这一目录，因此便携版无需安装，但数据并不与 `.exe` 同目录保存。
+- 渲染进程开启 sandbox 和 context isolation，关闭 Node integration，通过窄 IPC 接口访问主进程。
+- 界面资源使用 `bbapp://` 自定义协议，并应用内容安全策略。
+
+目前未加入托盘常驻。点击关闭按钮会退出应用，播放随之停止。
+
+### 目录结构
+
+```text
+apps/desktop/
+├─ electron/
+│  ├─ main.mjs          # 窗口、IPC、数据保存、自定义协议
+│  ├─ preload.cjs       # 渲染进程可使用的受限接口
+│  ├─ api.mjs           # 搜索、登录、收藏夹、音频流
+│  └─ core.mjs          # WBI 签名、数据校验、CDN 检查
+├─ src/                 # React 界面、类型、LRC 解析与样式
+├─ scripts/             # 开发启动与真实应用验收
+├─ tests/               # 核心逻辑测试
+├─ build/icon.ico       # Windows 图标
+├─ pnpm-lock.yaml       # 桌面独立依赖锁文件
+└─ release/             # 本地构建产物，不纳入 Git
+```
+
+仓库中 `apps/mobile`、`apps/backend` 和其他共享包来自上游，作为保留的项目源码。桌面首版运行不依赖 Android 原生播放引擎。
+
+## 验证结果与限制
+
+已在 Windows x64 上通过桌面类型检查、lint、10 项核心测试、开发应用烟雾测试、打包后的主程序验收和便携程序真实启动验收。已验证搜索、公开 MV 播放、拖动进度、暂停、JSON 导入导出以及重启后歌单和歌词恢复。
+
+登录二维码已真实获取并展示；扫码确认后的真实账号及私人收藏夹访问仍需要用户本人验收。安装包已生成，尚未执行安装向导。B 站接口限流、视频下架、权限和网络状态可能影响搜索或播放。
+
+详细证据与范围见 [VERIFICATION.md](./apps/desktop/VERIFICATION.md)。
+
+## 参考项目与致谢
+
+- **原项目 [bbplayer-app/BBPlayer](https://github.com/bbplayer-app/BBPlayer)**：本项目从其 `dev` 分支移植，保留上游历史、源码和 MIT 版权声明。桌面开发起点为提交 [`1e1ae9f`](https://github.com/bbplayer-app/BBPlayer/commit/1e1ae9f)。
+- **[原项目 README](./README.upstream.md)**：说明原移动端的功能和结构；其中移动端功能不代表桌面首版全部支持。
+- **[原项目文档](https://bbplayer.roitium.com)**：移动端使用与歌词规范等参考资料。
+- **[上游 WBI 实现](./apps/mobile/src/lib/api/bilibili/wbi.ts)** 与 **[上游 B 站接口](./apps/mobile/src/lib/api/bilibili/api.ts)**：桌面签名和接口适配的主要依据。
+- **[Electron](https://www.electronjs.org/docs/latest/)**、**[React](https://react.dev/)**、**[Vite](https://vite.dev/)** 和 **[electron-builder](https://www.electron.build/)**：桌面运行时、界面、构建与 Windows 打包工具。
+
+## 许可证
+
+项目沿用 [MIT License](./LICENSE)，保留原作者 `Copyright (c) 2025 Roitium.`。复用或分发源码时应保留原许可证和版权声明。Bilibili 内容及第三方资源的权利归相应权利人所有。
