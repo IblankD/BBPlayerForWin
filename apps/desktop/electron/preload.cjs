@@ -5,6 +5,23 @@ const invoke = async (channel, ...args) => {
   return result.value;
 };
 contextBridge.exposeInMainWorld('desktop', {
+  loadSession: () => invoke('session:load'),
+  saveSession: input => invoke('session:save', input),
+  setCloseBehavior: value => invoke('session:closeBehavior', value),
+  onCloseBehavior: callback => {
+    const listener = (_event, value) => callback(value);
+    ipcRenderer.on('session:closeBehaviorChanged', listener);
+    return () => ipcRenderer.removeListener('session:closeBehaviorChanged', listener);
+  },
+  playerStatus: input => invoke('player:status', input),
+  onSaveRequest: callback => {
+    const listener = async (_event, id) => {
+      try { await callback(); } catch { /* Save failures are surfaced by renderer IPC handling. */ }
+      finally { ipcRenderer.send('session:flushed', id); }
+    };
+    ipcRenderer.on('session:flush', listener);
+    return () => ipcRenderer.removeListener('session:flush', listener);
+  },
   loadLibrary: () => invoke('library:load'),
   saveLibrary: input => invoke('library:save', input),
   exportLibrary: () => invoke('library:export'),

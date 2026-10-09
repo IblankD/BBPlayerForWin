@@ -1,9 +1,9 @@
-import { app, BrowserWindow, ipcMain, protocol, safeStorage, session, dialog, globalShortcut } from 'electron';
+import { app, BrowserWindow, ipcMain, protocol, safeStorage, session, dialog, globalShortcut, Tray, Menu, screen } from 'electron';
 import { readFile, writeFile, rename, mkdir } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { BilibiliClient } from './api.mjs';
-import { validateLibrary } from './core.mjs';
+import { validateLibrary, validateSession } from './core.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const devUrl = !app.isPackaged && process.env.BBPLAYER_DEV_URL === 'http://127.0.0.1:5173' ? process.env.BBPLAYER_DEV_URL : null;
@@ -17,6 +17,15 @@ protocol.registerSchemesAsPrivileged([
 let window;
 let client;
 let library;
+let playerSession = validateSession();
+let tray;
+let trayMenu;
+let quitting = false;
+let closeDialog = false;
+let captureGeometry = async () => {};
+let playerInfo = { title: '', playing: false };
+let flushSequence = 0;
+const flushWaiters = new Map();
 let writing = Promise.resolve();
 const defaults = () => ({ playlists: [{ id: 'liked', name: '我喜欢的音乐', tracks: [] }], history: [], lyrics: {}, volume: 0.7, repeat: 'all' });
 const location = name => path.join(app.getPath('userData'), name);
@@ -30,6 +39,35 @@ function enqueueWrite(name, content) {
   writing = next;
   return next;
 }
+const saveSession = () => enqueueWrite('session.json', JSON.stringify(playerSession));
+function showWindow() {
+  if (!window || window.isDestroyed()) return;
+  if (window.isMinimized()) window.restore();
+  window.show(); window.focus();
+}
+function refreshTray() {
+  if (!tray) return;
+  tray.setToolTip((playerInfo.title ? `${playerInfo.playing ? '正在播放' : '已暂停'} · ${playerInfo.title}` : 'BBPlayer') .slice(0, 120));
+  trayMenu = Menu.buildFromTemplate([
+    { label: '显示主窗口', click: showWindow },
+    { label: playerInfo.playing ? '暂停' : '播放', enabled: !!playerInfo.title, click: () => window?.webContents.send('player:command', 'toggle') },
+    { label: '上一首', enabled: !!playerInfo.title, click: () => window?.webContents.send('player:command', 'previous') },
+    { label: '下一首', enabled: !!playerInfo.title, click: () => window?.webContents.send('player:command', 'next') },
+    { type: 'separator' },
+    { label: '退出 BBPlayer', click: () => app.quit() },
+  ]);
+  tray.setContextMenu(trayMenu);
+}
+async function flushRenderer() {
+  if (!window || window.isDestroyed() || window.webContents.isDestroyed()) return;
+  const id = ++flushSequence;
+  await new Promise(resolve => {
+    const timer = setTimeout(() => { flushWaiters.delete(id); resolve(); }, 2000);
+    flushWaiters.set(id, () => { clearTimeout(timer); flushWaiters.delete(id); resolve(); });
+    window.webContents.send('session:flush', id);
+  });
+}
+ipcMain.on('session:flushed', (event, id) => { try { trusted(event); flushWaiters.get(id)?.(); } catch { /* Ignore foreign frames. */ } });
 function trusted(event) {
   const url = event.senderFrame?.url || '';
   if (event.sender !== window?.webContents || event.senderFrame !== window.webContents.mainFrame || !(url.startsWith('bbapp://bundle/') || (devUrl && new URL(url).origin === devUrl))) throw new Error('请求来源无效');
@@ -42,6 +80,7 @@ function handle(channel, fn) {
   });
 }
 async function initialize() {
+  try { playerSession = validateSession(JSON.parse(await readFile(location('session.json'), 'utf8'))); } catch { /* Older versions have no session. */ }
   try { library = validateLibrary(JSON.parse(await readFile(location('library.json'), 'utf8'))); }
   catch (error) {
     if (error.code !== 'ENOENT') {
@@ -57,6 +96,20 @@ async function initialize() {
     await enqueueWrite('account.bin', value ? safeStorage.encryptString(value) : Buffer.alloc(0));
   } });
   handle('library:load', () => library);
+  handle('session:load', () => playerSession);
+  handle('session:save', async input => {
+    playerSession = validateSession({ ...input, closeBehavior: playerSession.closeBehavior });
+    await saveSession();
+  });
+  handle('session:closeBehavior', async value => {
+    if (!['ask', 'tray', 'quit'].includes(value)) throw new Error('关闭方式无效');
+    playerSession.closeBehavior = value; await saveSession();
+    window?.webContents.send('session:closeBehaviorChanged', value);
+  });
+  handle('player:status', input => {
+    playerInfo = { title: typeof input?.title === 'string' ? input.title.slice(0, 500) : '', playing: input?.playing === true };
+    refreshTray();
+  });
   handle('library:save', async input => { const next = validateLibrary(input); await enqueueWrite('library.json', JSON.stringify(next)); library = next; });
   handle('library:export', async () => {
     const { canceled, filePath } = await dialog.showSaveDialog(window, { title: '导出歌单备份', defaultPath: 'BBPlayer-library.json', filters: [{ name: 'JSON', extensions: ['json'] }] });
@@ -86,10 +139,48 @@ async function initialize() {
   handle('api:logout', () => client.logout());
   handle('api:favorites', () => client.favorites());
   handle('api:favoriteTracks', (id, page) => client.favoriteTracks(id, page));
-  handle('window:control', action => { if (action === 'minimize') window.minimize(); else if (action === 'maximize') { if (window.isMaximized()) window.unmaximize(); else window.maximize(); } else if (action === 'close') window.close(); });
+  handle('window:control', action => { if (action === 'minimize') window.minimize(); else if (action === 'maximize') { if (window.isMaximized()) window.unmaximize(); else window.maximize(); } else if (action === 'close') window.close(); else if (action === 'quit') app.quit(); });
 }
 async function createWindow() {
-  window = new BrowserWindow({ width: 1280, height: 850, minWidth: 980, minHeight: 680, frame: false, backgroundColor: '#f6f9fc', title: 'BBPlayer', icon: path.join(here, '../build/icon.ico'), show: false, webPreferences: { preload: path.join(here, 'preload.cjs'), nodeIntegration: false, contextIsolation: true, sandbox: true, webSecurity: true } });
+  let savedWindow;
+  try {
+    const value = JSON.parse(await readFile(location('window.json'), 'utf8'));
+    const b = value.bounds;
+    if (b && ['x', 'y', 'width', 'height'].every(k => Number.isFinite(b[k])) && b.width >= 980 && b.height >= 680 && b.width <= 10000 && b.height <= 10000 && screen.getAllDisplays().some(d => b.x < d.workArea.x + d.workArea.width && b.x + b.width > d.workArea.x + 100 && b.y < d.workArea.y + d.workArea.height && b.y + 100 > d.workArea.y)) savedWindow = value;
+  } catch { /* Default geometry on first launch. */ }
+  window = new BrowserWindow({ width: 1280, height: 850, ...savedWindow?.bounds, minWidth: 980, minHeight: 680, frame: false, backgroundColor: '#f6f9fc', title: 'BBPlayer', icon: path.join(here, '../build/icon.ico'), show: false, webPreferences: { preload: path.join(here, 'preload.cjs'), nodeIntegration: false, contextIsolation: true, sandbox: true, webSecurity: true, backgroundThrottling: false } });
+  // setBounds round-trips Windows frameless geometry without constructor frame padding.
+  if (savedWindow) window.setBounds(savedWindow.bounds);
+  if (savedWindow?.maximized) window.maximize();
+  let geometryTimer;
+  const saveGeometry = () => {
+    const bounds = window.getNormalBounds();
+    // Fractional Windows display scaling may round by a pixel. Keep the persisted
+    // baseline for that rounding so every restart does not grow the window.
+    const unchanged = savedWindow && ['x', 'y', 'width', 'height'].every(k => Math.abs(bounds[k] - savedWindow.bounds[k]) <= 2);
+    return enqueueWrite('window.json', JSON.stringify({ bounds: unchanged ? savedWindow.bounds : bounds, maximized: window.isMaximized() }));
+  };
+  captureGeometry = saveGeometry;
+  for (const event of ['resize', 'move', 'maximize', 'unmaximize']) window.on(event, () => { clearTimeout(geometryTimer); geometryTimer = setTimeout(() => { void saveGeometry().catch(() => {}); }, 500); });
+  window.on('close', event => {
+    if (quitting) return;
+    event.preventDefault();
+    if (closeDialog) return;
+    closeDialog = true;
+    void (async () => {
+      let behavior = playerSession.closeBehavior;
+      if (behavior === 'ask') {
+        const result = await dialog.showMessageBox(window, { type: 'question', title: '关闭 BBPlayer', message: '关闭窗口后如何处理？', buttons: ['后台播放', '退出程序', '取消'], defaultId: 0, cancelId: 2, checkboxLabel: '记住我的选择', checkboxChecked: false });
+        if (result.response === 2) return;
+        behavior = result.response === 0 ? 'tray' : 'quit';
+        if (result.checkboxChecked) { playerSession.closeBehavior = behavior; await saveSession(); window.webContents.send('session:closeBehaviorChanged', behavior); }
+      }
+      await saveGeometry();
+      if (behavior === 'tray' && tray) { await flushRenderer(); window.hide(); }
+      else app.quit();
+    })().catch(() => showWindow()).finally(() => { closeDialog = false; });
+  });
+  window.on('closed', () => clearTimeout(geometryTimer));
   window.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
   window.webContents.on('will-navigate', (event, url) => { if (url !== (devUrl || 'bbapp://bundle/index.html')) event.preventDefault(); });
   window.once('ready-to-show', () => window.show());
@@ -98,7 +189,7 @@ async function createWindow() {
 const single = app.requestSingleInstanceLock();
 if (!single) app.quit();
 else {
-  app.on('second-instance', () => { if (window) { if (window.isMinimized()) window.restore(); window.show(); window.focus(); } });
+  app.on('second-instance', showWindow);
   app.whenReady().then(async () => {
     session.defaultSession.setPermissionRequestHandler((_contents, _permission, callback) => callback(false));
     protocol.handle('bbapp', async request => {
@@ -118,6 +209,9 @@ else {
       try { return await client.fetchMedia(url.pathname.slice(1), request); } catch { return new Response('音频请求失败', { status: 502 }); }
     });
     await createWindow();
+    tray = new Tray(path.join(here, '../build/icon.ico'));
+    tray.on('double-click', showWindow);
+    refreshTray();
     for (const [key, command] of [['MediaPlayPause', 'toggle'], ['MediaNextTrack', 'next'], ['MediaPreviousTrack', 'previous']]) globalShortcut.register(key, () => window?.webContents.send('player:command', command));
   }).catch(async error => { await dialog.showMessageBox({ type: 'error', message: 'BBPlayer 启动失败', detail: error.message }); app.quit(); });
 }
@@ -126,6 +220,8 @@ let drained = false;
 app.on('before-quit', event => {
   if (drained) return;
   event.preventDefault();
-  void writing.catch(() => {}).then(() => { drained = true; app.quit(); });
+  if (quitting) return;
+  quitting = true;
+  void captureGeometry().catch(() => {}).then(flushRenderer).then(() => writing.catch(() => {})).finally(() => { drained = true; app.quit(); });
 });
-app.on('will-quit', () => globalShortcut.unregisterAll());
+app.on('will-quit', () => { globalShortcut.unregisterAll(); tray?.destroy(); });

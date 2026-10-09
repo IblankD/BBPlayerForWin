@@ -12,6 +12,9 @@
 - 手动 LRC 歌词、时间同步、歌单 JSON 导入/导出。
 - Windows 媒体按键、空格暂停、Ctrl + 左右切歌。
 - Windows 安装包和便携程序构建。
+- 0.1.2：音频错误和缓冲超时后刷新地址，断网重连恢复，保留分 P 和进度；最多重试 3 次，暂停取消自动恢复。
+- 托盘后台播放和菜单控制，关闭时询问或按偏好后台播放/退出。
+- 启动后恢复队列、当前歌曲、进度、随机模式、本地页面、窗口和关闭偏好，保持暂停。
 
 ## 开发与构建
 
@@ -51,10 +54,13 @@ pnpm --dir apps/desktop dist:win
 - `electron/main.mjs`：窄 IPC 接口、Windows 凭据加密、本地原子写入、资源协议。
 - `bbmedia://audio/<token>`：仅转发 API 返回的可信 B 站 CDN，支持 Range/206；不向渲染进程暴露 Cookie，不向 CDN 发送账户凭据。
 - `src`：桌面 UI 和 HTMLAudio 播放。纯 Web 版需要另配 API/音频服务。
+- `src/player.ts`：带请求代次的播放控制器，负责新地址加载、进度恢复、有界重试与断网恢复；`usePlayback.ts` 将它接入 React。
 - `tests`：签名、存储往返、登录、CDN/重定向限制、Range 流和歌词解析检查。
 - `scripts/smoke.mjs`：启动真实 Electron，播放公开 MV、拖动进度、保存歌单和重启验收；使用独立临时数据目录，不改变用户账号。
 
 账户用 Electron safeStorage（Windows DPAPI）加密，歌单保存在 Electron userData 目录。JSON 备份不包含登录凭据。
+
+`session.json` 单独保存队列和使用状态，每 5 秒保存进度，正常退出前再保存一次；`window.json` 保存窗口位置和大小。重启时不复用临时音频 URL，点击播放后获取新地址。JSON 歌单备份不包含这两种状态文件。
 
 ## 首版范围
 

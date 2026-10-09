@@ -1,4 +1,4 @@
-import { _electron as electron } from '@playwright/test';
+import { _electron as electron, expect } from '@playwright/test';
 import assert from 'node:assert/strict';
 import { mkdir, mkdtemp, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
@@ -14,6 +14,11 @@ const launch = () => electron.launch({ args: executablePath ? [`--user-data-dir=
 let app = await launch();
 try {
   let page = await app.firstWindow();
+  // Capture menus built by production code; actions below invoke real menu callbacks.
+  await app.evaluate(({ Menu }) => {
+    const build = Menu.buildFromTemplate.bind(Menu);
+    Menu.buildFromTemplate = template => { const menu = build(template); globalThis.bbplayerSmokeMenu = menu; return menu; };
+  });
   const errors = [];
   page.on('pageerror', error => errors.push(error.message));
   await page.getByRole('heading', { name: '给生活，配一点音乐。' }).waitFor();
@@ -39,6 +44,14 @@ try {
   assert.equal(playback.protocol, 'bbmedia:'); assert.ok(playback.duration > 200);
   await page.getByRole('slider', { name: '播放进度' }).fill('60');
   await page.waitForFunction(() => document.querySelector('audio').currentTime >= 59, undefined, { timeout: 15000 });
+  const firstSource = await page.evaluate(() => document.querySelector('audio').src);
+  await page.evaluate(() => document.querySelector('audio').dispatchEvent(new Event('error')));
+  await page.waitForFunction(old => { const a = document.querySelector('audio'); return a.src !== old && !a.paused && a.currentTime >= 59; }, firstSource, { timeout: 30000 });
+  await page.evaluate(() => window.dispatchEvent(new Event('offline')));
+  await page.getByText('网络已断开，联网后继续播放', { exact: true }).waitFor();
+  assert.equal(await page.evaluate(() => document.querySelector('audio').paused), true);
+  await page.evaluate(() => window.dispatchEvent(new Event('online')));
+  await page.waitForFunction(() => { const a = document.querySelector('audio'); return !a.paused && a.currentTime >= 59; }, undefined, { timeout: 30000 });
   await page.getByRole('button', { name: '暂停', exact: true }).click();
   assert.equal(await page.evaluate(() => document.querySelector('audio').paused), true);
   await page.getByRole('button', { name: '歌词', exact: true }).click();
@@ -65,12 +78,54 @@ try {
   await page.getByRole('button', { name: '导入歌单备份', exact: true }).click();
   await page.getByRole('button', { name: '导入验收歌单', exact: true }).waitFor();
   await page.getByRole('button', { name: '关闭弹窗', exact: true }).click();
-  // Explicit close flushes saves before leaving.
+  await page.getByRole('button', { name: '随机播放', exact: true }).click();
+  await page.getByRole('slider', { name: '音量' }).fill('0.42');
+  // Exercise the actual native close decision, tray menu and hidden window.
+  await app.evaluate(({ dialog }) => { dialog.showMessageBox = async () => ({ response: 2, checkboxChecked: false }); });
   await page.getByRole('button', { name: '关闭', exact: true }).click();
+  assert.equal(await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].isVisible()), true);
+  await app.evaluate(({ dialog }) => { dialog.showMessageBox = async () => ({ response: 0, checkboxChecked: true }); });
+  await page.getByRole('button', { name: '播放', exact: true }).click();
+  await page.waitForFunction(() => !document.querySelector('audio').paused);
+  await page.getByRole('button', { name: '关闭', exact: true }).click();
+  await page.waitForFunction(async () => (await window.desktop.loadSession()).closeBehavior === 'tray');
+  await expect.poll(() => app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].isVisible()), { timeout: 10000 }).toBe(false);
+  const trayAction = async label => app.evaluate((_electron, label) => {
+    const item = globalThis.bbplayerSmokeMenu?.items.find(item => item.label === label);
+    if (!item?.enabled) throw new Error(`Tray action unavailable: ${label}`);
+    item.click();
+  }, label);
+  const beforeHidden = await page.evaluate(() => document.querySelector('audio').currentTime);
+  await page.waitForFunction(position => document.querySelector('audio').currentTime > position + .5, beforeHidden);
+  await trayAction('暂停');
+  await page.waitForFunction(() => document.querySelector('audio').paused);
+  await trayAction('播放');
+  await page.waitForFunction(() => !document.querySelector('audio').paused);
+  await trayAction('显示主窗口');
+  assert.equal(await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].isVisible()), true);
+  await page.getByRole('button', { name: '歌单备份与设置', exact: true }).click();
+  assert.equal(await page.getByRole('combobox', { name: '关闭窗口时' }).inputValue(), 'tray');
+  await page.screenshot({ path: path.join(root, 'test-results', 'desktop-settings.png') });
+  await page.getByRole('button', { name: '关闭弹窗', exact: true }).click();
+  await page.getByRole('button', { name: '暂停', exact: true }).click();
+  await page.getByRole('slider', { name: '播放进度' }).fill('60');
+  const expectedGeometry = await app.evaluate(({ BrowserWindow }) => { const win = BrowserWindow.getAllWindows()[0]; win.setBounds({ width: 1160, height: 800 }); return win.getNormalBounds(); });
+  await trayAction('退出 BBPlayer');
   await app.close().catch(() => {});
   app = await launch(); page = await app.firstWindow();
   page.on('pageerror', error => errors.push(error.message));
   await page.getByRole('button', { name: '桌面验收歌单', exact: true }).waitFor();
+  await page.getByRole('heading', { name: '桌面验收歌单', exact: true }).waitFor();
+  assert.equal(await page.evaluate(() => document.querySelector('audio').getAttribute('src')), null);
+  assert.ok(Number(await page.getByRole('slider', { name: '播放进度' }).inputValue()) >= 59);
+  assert.equal(await page.getByRole('slider', { name: '音量' }).inputValue(), '0.42');
+  assert.equal(await page.getByRole('button', { name: '随机播放', exact: true }).getAttribute('class'), 'icon-button active');
+  const geometry = await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].getNormalBounds());
+  for (const key of ['x', 'y', 'width', 'height']) assert.ok(Math.abs(geometry[key] - expectedGeometry[key]) <= 2, `Restored ${key} exceeds display rounding`);
+  const restored = await page.evaluate(() => window.desktop.loadSession());
+  assert.equal(restored.queue.length, 1); assert.equal(restored.current.cid > 0, true); assert.equal(restored.closeBehavior, 'tray');
+  await page.getByRole('button', { name: '播放', exact: true }).click();
+  await page.waitForFunction(() => { const a = document.querySelector('audio'); return !a.paused && a.currentTime >= 59; }, undefined, { timeout: 30000 });
   await page.getByRole('button', { name: '桌面验收歌单', exact: true }).click();
   await page.getByRole('button', { name: '播放 【官方 MV】Never Gonna Give You Up - Rick Astley', exact: true }).waitFor();
   const saved = JSON.parse(await readFile(path.join(testData, 'library.json'), 'utf8'));
@@ -78,6 +133,10 @@ try {
   assert.equal(saved.playlists.find(p => p.id === 'liked').tracks.length, 1);
   assert.equal(saved.history.length, 1);
   assert.match(saved.lyrics.BV1GJ411x7h7, /歌词测试/);
+  await page.evaluate(() => window.desktop.windowControl('quit')).catch(() => {});
+  await app.close().catch(() => {});
+  const savedGeometry = JSON.parse(await readFile(path.join(testData, 'window.json'), 'utf8'));
+  assert.deepEqual(savedGeometry.bounds, expectedGeometry, 'Repeated saving must not accumulate display rounding');
   assert.deepEqual(errors, []);
-  console.log(JSON.stringify({ result: 'PASS', executable: executablePath || 'development Electron', playback, persisted: ['playlist', 'liked', 'history', 'artist', 'lyrics'], rendererErrors: errors, screenshot: path.join(root, 'test-results', 'desktop-playback.png') }, null, 2));
+  console.log(JSON.stringify({ result: 'PASS', executable: executablePath || 'development Electron', playback, persisted: ['playlist', 'liked', 'history', 'artist', 'lyrics', 'queue', 'part', 'position', 'shuffle', 'volume', 'view', 'window', 'closeBehavior'], recovery: ['injected audio error with fresh stream', 'offline/online events'], tray: ['cancel close', 'remember background choice', 'hidden playback', 'pause/resume', 'show', 'quit'], rendererErrors: errors, screenshot: path.join(root, 'test-results', 'desktop-playback.png') }, null, 2));
 } finally { await app.close().catch(() => {}); }

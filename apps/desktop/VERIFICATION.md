@@ -1,4 +1,4 @@
-# Windows 0.1.1 验收记录
+# Windows 0.1.2 验收记录
 
 验收日期：2026-10-09。平台：Windows x64，Node 24.12.0，Electron 44.6.0。
 
@@ -6,14 +6,14 @@
 
 - `pnpm --dir apps/desktop type-check`：TypeScript 检查通过。
 - `pnpm --dir apps/desktop lint`：桌面 UI、主进程、预加载和测试脚本检查通过。
-- `pnpm --dir apps/desktop test`：10 项测试全部通过，包括 WBI 签名、账户凭据隔离、CDN 重定向限制、Range/206、存储往返、歌词解析。
+- `pnpm --dir apps/desktop test`：18 项测试全部通过，包括 WBI 签名、账户凭据隔离、CDN 重定向限制、Range/206、存储往返、歌词解析，以及使用状态迁移、过期地址恢复、断网恢复、旧请求隔离、暂停取消重试、不可用视频停止重试、有界重试和缓冲超时。
 - `pnpm --dir apps/desktop dist:win`：安装包、便携程序和解包后的应用全部生成。
 - 开发 Electron 和打包后 `release/win-unpacked/BBPlayer.exe` 均通过完整烟雾测试。
 - 发布便携程序通过 `pnpm --dir apps/desktop smoke:portable` 的实际启动、搜索、播放、拖动进度、暂停和关闭测试。
 
-真实接口验收使用公开 MV `BV1GJ411x7h7`。HTMLAudio 识别的时长为 212.308833 秒，播放后 readyState 为 4。Range 请求返回 HTTP 206 和 1024 字节。便携版实际跳转到 60.003194 秒并暂停，渲染进程没有运行错误。
+真实接口验收使用公开 MV `BV1GJ411x7h7`。HTMLAudio 识别的时长为 212.308833 秒，播放后 readyState 为 4。便携版实际跳转到 60.011303 秒并暂停，渲染进程没有运行错误。
 
-本次更新还验证了蓝白主题与原图一致的界面标识，检查了 7 尺寸 ICO，并从打包后的主程序、安装包和便携程序提取关联图标，均为新图标；可执行文件版本为 0.1.1。
+沿用 0.1.1 的蓝白主题和 7 尺寸 ICO；新增关闭偏好设置，已检查实际界面显示。
 
 完整烟雾测试还验证了：
 
@@ -22,15 +22,19 @@
 - 重启后歌单、作者元数据、喜欢、历史和歌词恢复。
 - JSON 导出、导入并合并歌单，备份不包含 Cookie。此处由测试替换系统文件选择对话框返回路径，实际 IPC 和文件读写代码仍正常执行。
 - 沙箱界面中没有 Node `require`。
+- 注入 HTMLAudio 错误事件后，获取新音频地址并从原进度继续真实播放；模拟 offline/online 事件，验证自动暂停与联网恢复。未通过物理拔网线模拟断网，持续缓冲和失败重试边界由控制器测试覆盖。
+- 取消关闭、记住后台播放选择、实际隐藏窗口后继续播放；调用真实托盘菜单回调暂停、继续、显示窗口和退出。系统对话框选择由测试替换返回值，原关闭处理、菜单和托盘代码正常执行；尚未人工点击系统托盘图标。
+- 重启后恢复队列、当前视频与分 P、60 秒进度、随机模式、音量、本地歌单页面、关闭偏好和窗口位置/尺寸；保持暂停且不加载旧音频地址，点击播放后取得新地址继续。
+- Windows 分数缩放允许最多 2 像素的窗口恢复舍入差异；验证连续保存不会累积尺寸偏差。
 
 ## 产物
 
 | 文件 | 字节数 | SHA256 |
 | --- | ---: | --- |
-| `release/BBPlayer-0.1.1-x64-Portable.exe` | 114251110 | `0F64C426C0F5032EEAF0A53226D125ABD01B8D846E2AEF7ACFA334F2216896C8` |
-| `release/BBPlayer-0.1.1-x64-Setup.exe` | 114551262 | `B8DF3B8B21ED2F7A2C49DB945AEDE632A502E664BECED1A3B51212568E83C95E` |
+| `release/BBPlayer-0.1.2-x64-Portable.exe` | 114254647 | `C3BDFEA688BD6A97EB8C93B85B1BC9FA2386FEF49F495035C3BF051D7C70D3E3` |
+| `release/BBPlayer-0.1.2-x64-Setup.exe` | 114554814 | `E19C5D0D3E876093B4FB28ED06939DCAF004CFA7C2E4D0147D74FBD84B20F1FC` |
 
-界面截图位于 `test-results/desktop-home.png`、`desktop-playback.png` 和 `portable-playback.png`。主页截图同时复制到根目录 `docs/images/desktop-home.png`，供 README 展示；其余验收截图和构建产物在本地保留，不纳入源码。
+界面截图位于 `test-results/desktop-home.png`、`desktop-playback.png`、`desktop-settings.png` 和 `portable-playback.png`。主页截图另有根目录 `docs/images/desktop-home.png`，供 README 展示；其余验收截图和构建产物在本地保留，不纳入源码。
 
 ## 尚未验证或实现
 

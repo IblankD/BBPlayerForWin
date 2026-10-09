@@ -45,7 +45,7 @@ try {
   assert.ok(playback.duration > 200); assert.equal(playback.paused, true); assert.deepEqual(errors, []);
   await mkdir(path.join(root, 'test-results'), { recursive: true });
   await page.screenshot({ path: path.join(root, 'test-results', 'portable-playback.png') });
-  await page.getByRole('button', { name: '关闭', exact: true }).click();
+  await page.evaluate(() => window.desktop.windowControl('quit'));
   console.log(JSON.stringify({ result: 'PASS', executable, playback, rendererErrors: errors }, null, 2));
 } finally {
   await browser?.close().catch(() => {});

@@ -26,11 +26,12 @@ export function parseVideoId(value) {
   return text.match(/(?:^|\/)(BV[0-9A-Za-z]{10})(?:$|[/?#])/i)?.[1] || text.match(/\b(BV[0-9A-Za-z]{10})\b/i)?.[1] || null;
 }
 export function normalizeTrack(item) {
+  if (!item || typeof item !== 'object') return null;
   const bvid = item.bvid || item.bv_id;
   if (!/^BV[0-9A-Za-z]{10}$/.test(bvid || '')) return null;
   const parts = String(item.duration || '').split(':').map(Number);
   const duration = typeof item.duration === 'number' ? item.duration : parts.reduce((total, part) => total * 60 + (part || 0), 0);
-  return { bvid, title: cleanTitle(item.title).slice(0, 500), artist: String(item.artist || item.author || item.upper?.name || item.owner?.name || '').slice(0, 200), cover: imageUrl(item.pic || item.cover), duration, cid: Number(item.cid) || undefined };
+  return { bvid, title: cleanTitle(item.title).slice(0, 500), artist: String(item.artist || item.author || item.upper?.name || item.owner?.name || '').slice(0, 200), cover: imageUrl(item.pic || item.cover), duration: Number.isFinite(duration) ? Math.max(0, duration) : 0, cid: Number.isSafeInteger(Number(item.cid)) && Number(item.cid) > 0 ? Number(item.cid) : undefined };
 }
 export function validateLibrary(input) {
   if (!input || typeof input !== 'object' || !Array.isArray(input.playlists) || input.playlists.length > 100) throw new Error('歌单数据格式无效');
@@ -44,4 +45,12 @@ export function validateLibrary(input) {
   const lyrics = {};
   for (const [id, text] of Object.entries(input.lyrics || {}).slice(0, 1000)) if (/^BV[0-9A-Za-z]{10}$/.test(id) && typeof text === 'string') lyrics[id] = text.slice(0, 100000);
   return { playlists, history, lyrics, volume: Math.max(0, Math.min(1, Number(input.volume) || 0)), repeat: ['off', 'all', 'one'].includes(input.repeat) ? input.repeat : 'all' };
+}
+export function validateSession(input = {}) {
+  const queue = Array.isArray(input.queue) ? input.queue.slice(0, 10000).map(normalizeTrack).filter(Boolean) : [];
+  const current = input.current ? normalizeTrack(input.current) : null;
+  if (current && !queue.some(t => t.bvid === current.bvid)) queue.push(current);
+  const position = Number(input.position);
+  const view = typeof input.view === 'string' && /^(home|liked|history|playlist:[\w-]{1,100})$/.test(input.view) ? input.view : 'home';
+  return { queue, current, position: current && Number.isFinite(position) ? Math.max(0, Math.min(position, Math.max(0, current.duration - .25))) : 0, shuffle: input.shuffle === true, view, closeBehavior: ['ask', 'tray', 'quit'].includes(input.closeBehavior) ? input.closeBehavior : 'ask' };
 }

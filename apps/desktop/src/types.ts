@@ -4,7 +4,14 @@ export interface Library { playlists: Playlist[]; history: Track[]; lyrics: Reco
 export interface Account { mid: number; name: string }
 export interface Favorite { id: number; title: string; count: number }
 export interface Part { cid: number; title: string; duration: number }
+export interface PlayerSession { queue: Track[]; current: Track | null; position: number; shuffle: boolean; view: string; closeBehavior: 'ask' | 'tray' | 'quit' }
 export interface Desktop {
+  loadSession(): Promise<PlayerSession>;
+  saveSession(input: PlayerSession): Promise<void>;
+  setCloseBehavior(value: PlayerSession['closeBehavior']): Promise<void>;
+  playerStatus(input: { title: string; playing: boolean }): Promise<void>;
+  onSaveRequest(callback: () => Promise<void>): () => void;
+  onCloseBehavior(callback: (value: PlayerSession['closeBehavior']) => void): () => void;
   loadLibrary(): Promise<Library>;
   saveLibrary(input: Library): Promise<void>;
   exportLibrary(): Promise<boolean>;
@@ -17,7 +24,7 @@ export interface Desktop {
   logout(): Promise<void>;
   favorites(): Promise<Favorite[]>;
   favoriteTracks(id: number, page: number): Promise<{ tracks: Track[]; hasMore: boolean }>;
-  windowControl(action: 'minimize' | 'maximize' | 'close'): Promise<void>;
+  windowControl(action: 'minimize' | 'maximize' | 'close' | 'quit'): Promise<void>;
   onPlayerCommand(callback: (command: string) => void): () => void;
 }
 declare global { interface Window { desktop: Desktop } }
