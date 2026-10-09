@@ -32,6 +32,19 @@ pnpm --dir apps/desktop dist:win
 
 安装包在 `apps/desktop/release`。桌面有独立的 pnpm workspace/lockfile，避免安装 Android/Expo 工具链；根 workspace 的已有 mobile 检查仍需根依赖。
 
+## 图标与主题
+
+0.1.1 使用蓝白主题，主色为 `#0099ff`。用户提供的原始图标保存在 `build/icon-source.png`，界面图标为 `public/app-icon.png`，Windows 图标为 `build/icon.ico`，含 16、24、32、48、64、128、256 像素尺寸。
+
+替换原图后，在 Windows PowerShell 中重新生成图标，再打包：
+
+```powershell
+& ./apps/desktop/scripts/build-icon.ps1
+pnpm --dir apps/desktop dist:win
+```
+
+生成脚本只缩放原图并裁出透明圆角，不重绘图案。界面主题样式位于 `src/style.css`。
+
 ## 架构
 
 - `electron/api.mjs`：固定 B 站 API，WBI 签名沿用 mobile 算法。网络在主进程执行。

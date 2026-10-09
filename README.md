@@ -2,7 +2,7 @@
 
 基于 [BBPlayer](https://github.com/bbplayer-app/BBPlayer) 开发的 Windows 桌面 Bilibili 音频播放器。使用 React + Electron，让搜索、收藏夹和本地歌单在电脑上播放。
 
-当前版本为 **0.1.0，Windows 桌面首版**。本仓库保留上游 monorepo，桌面应用位于 [`apps/desktop`](./apps/desktop)，采用独立依赖。项目为社区移植，与 Bilibili 官方无关联。
+当前版本为 **0.1.1**，使用蓝白主题和用户提供的专属图标。本仓库保留上游 monorepo，桌面应用位于 [`apps/desktop`](./apps/desktop)，采用独立依赖。项目为社区移植，与 Bilibili 官方无关联。
 
 ![BBPlayerForWin 桌面界面](./docs/images/desktop-home.png)
 
@@ -31,8 +31,8 @@
 
 构建输出在 `apps/desktop/release/`：
 
-- `BBPlayer-0.1.0-x64-Portable.exe`：便携版，双击运行，无需安装。
-- `BBPlayer-0.1.0-x64-Setup.exe`：安装版，可选择安装目录并创建桌面快捷方式。
+- `BBPlayer-0.1.1-x64-Portable.exe`：便携版，双击运行，无需安装。
+- `BBPlayer-0.1.1-x64-Setup.exe`：安装版，可选择安装目录并创建桌面快捷方式。
 
 当前产物尚未代码签名。
 

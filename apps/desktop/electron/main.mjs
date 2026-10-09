@@ -89,7 +89,7 @@ async function initialize() {
   handle('window:control', action => { if (action === 'minimize') window.minimize(); else if (action === 'maximize') { if (window.isMaximized()) window.unmaximize(); else window.maximize(); } else if (action === 'close') window.close(); });
 }
 async function createWindow() {
-  window = new BrowserWindow({ width: 1280, height: 850, minWidth: 980, minHeight: 680, frame: false, backgroundColor: '#f7f8fa', title: 'BBPlayer', icon: path.join(here, '../build/icon.ico'), show: false, webPreferences: { preload: path.join(here, 'preload.cjs'), nodeIntegration: false, contextIsolation: true, sandbox: true, webSecurity: true } });
+  window = new BrowserWindow({ width: 1280, height: 850, minWidth: 980, minHeight: 680, frame: false, backgroundColor: '#f6f9fc', title: 'BBPlayer', icon: path.join(here, '../build/icon.ico'), show: false, webPreferences: { preload: path.join(here, 'preload.cjs'), nodeIntegration: false, contextIsolation: true, sandbox: true, webSecurity: true } });
   window.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
   window.webContents.on('will-navigate', (event, url) => { if (url !== (devUrl || 'bbapp://bundle/index.html')) event.preventDefault(); });
   window.once('ready-to-show', () => window.show());

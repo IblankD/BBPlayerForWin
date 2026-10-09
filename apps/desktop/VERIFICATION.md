@@ -1,4 +1,4 @@
-# Windows 首版验收记录
+# Windows 0.1.1 验收记录
 
 验收日期：2026-10-09。平台：Windows x64，Node 24.12.0，Electron 44.6.0。
 
@@ -11,7 +11,9 @@
 - 开发 Electron 和打包后 `release/win-unpacked/BBPlayer.exe` 均通过完整烟雾测试。
 - 发布便携程序通过 `pnpm --dir apps/desktop smoke:portable` 的实际启动、搜索、播放、拖动进度、暂停和关闭测试。
 
-真实接口验收使用公开 MV `BV1GJ411x7h7`。HTMLAudio 识别的时长为 212.308833 秒，播放后 readyState 为 4。Range 请求返回 HTTP 206 和 1024 字节。便携版实际跳转到 60.019121 秒并暂停，渲染进程没有运行错误。
+真实接口验收使用公开 MV `BV1GJ411x7h7`。HTMLAudio 识别的时长为 212.308833 秒，播放后 readyState 为 4。Range 请求返回 HTTP 206 和 1024 字节。便携版实际跳转到 60.003194 秒并暂停，渲染进程没有运行错误。
+
+本次更新还验证了蓝白主题与原图一致的界面标识，检查了 7 尺寸 ICO，并从打包后的主程序、安装包和便携程序提取关联图标，均为新图标；可执行文件版本为 0.1.1。
 
 完整烟雾测试还验证了：
 
@@ -25,10 +27,10 @@
 
 | 文件 | 字节数 | SHA256 |
 | --- | ---: | --- |
-| `release/BBPlayer-0.1.0-x64-Portable.exe` | 113736541 | `0C6FCE0C8BE17EA9AF221DA38F179DD8400E582BFD85BA9792608D79C200169A` |
-| `release/BBPlayer-0.1.0-x64-Setup.exe` | 113948872 | `ADCA07B1D44E0691243EE9FB0E30AD73DE0E6EBA9DFEBD2B9088F3DB8CC2FE80` |
+| `release/BBPlayer-0.1.1-x64-Portable.exe` | 114251110 | `0F64C426C0F5032EEAF0A53226D125ABD01B8D846E2AEF7ACFA334F2216896C8` |
+| `release/BBPlayer-0.1.1-x64-Setup.exe` | 114551262 | `B8DF3B8B21ED2F7A2C49DB945AEDE632A502E664BECED1A3B51212568E83C95E` |
 
-界面截图位于 `test-results/desktop-home.png`、`desktop-playback.png` 和 `portable-playback.png`。截图和构建产物在本地保留，不纳入源码。
+界面截图位于 `test-results/desktop-home.png`、`desktop-playback.png` 和 `portable-playback.png`。主页截图同时复制到根目录 `docs/images/desktop-home.png`，供 README 展示；其余验收截图和构建产物在本地保留，不纳入源码。
 
 ## 尚未验证或实现
 

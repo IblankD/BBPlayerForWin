@@ -3,14 +3,15 @@
 import { chromium } from '@playwright/test';
 import { spawn } from 'node:child_process';
 import { createServer } from 'node:net';
-import { mkdtemp, mkdir } from 'node:fs/promises';
+import { mkdtemp, mkdir, readFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import assert from 'node:assert/strict';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const executable = path.join(root, 'release', 'BBPlayer-0.1.0-x64-Portable.exe');
+const { version } = JSON.parse(await readFile(path.join(root, 'package.json'), 'utf8'));
+const executable = path.join(root, 'release', `BBPlayer-${version}-x64-Portable.exe`);
 const profile = await mkdtemp(path.join(os.tmpdir(), 'bbplayer-portable-'));
 const portServer = createServer();
 await new Promise(resolve => portServer.listen(0, '127.0.0.1', resolve));
