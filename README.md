@@ -27,7 +27,7 @@
 
 ### Windows 用户
 
-运行环境为 **Windows 10/11 x64**。源码仓库不包含构建后的 `.exe`，目前也未发布 GitHub Release；可按下文构建后使用。
+运行环境为 **Windows 10/11 x64**。在 [GitHub Releases](https://github.com/IblankD/BBPlayerForWin/releases/latest) 下载安装版或便携版，也可按下文从源码构建。Release 中的 `SHA256SUMS.txt` 提供文件校验值。
 
 构建输出在 `apps/desktop/release/`：
 
