@@ -15,6 +15,7 @@ try {
   const page = await app.firstWindow(); const errors = [];
   page.on('pageerror', error => errors.push(error.message));
   await page.getByRole('heading', { name: '给生活，配一点音乐。' }).waitFor();
+  await page.getByRole('slider', { name: '音量' }).fill('0.37');
   await page.getByRole('button', { name: '检查更新', exact: true }).click();
   const panel = page.getByRole('dialog', { name: '软件更新' });
   await panel.getByRole('button', { name: '检查更新', exact: true }).click();
@@ -56,14 +57,21 @@ try {
   await panel.getByRole('button', { name: '下载并校验更新', exact: true }).click();
   await panel.getByText('安装包已下载，SHA256 校验通过。', { exact: true }).waitFor();
   assert.equal(await app.evaluate(() => globalThis.bbplayerLaunchedInstaller), undefined);
-  const files = await readdir(path.join(profile, 'updates')); assert.equal(files.length, 1);
+  let files = await readdir(path.join(profile, 'updates')); assert.equal(files.length, 1);
   assert.equal(createHash('sha256').update(await readFile(path.join(profile, 'updates', files[0]))).digest('hex'), digest);
+  await panel.getByRole('button', { name: '清理更新缓存', exact: true }).click();
+  await panel.getByRole('status').filter({ hasText: '发现新版本 99.0.0' }).waitFor();
+  assert.deepEqual(await readdir(path.join(profile, 'updates')), []);
+  await panel.getByRole('button', { name: '下载并校验更新', exact: true }).click();
+  await panel.getByText('安装包已下载，SHA256 校验通过。', { exact: true }).waitFor();
+  files = await readdir(path.join(profile, 'updates')); assert.equal(files.length, 1);
   await panel.getByRole('button', { name: '退出并安装更新', exact: true }).click();
   await expect.poll(() => app.evaluate(() => globalThis.bbplayerQuitRequested === true), { timeout: 10000 }).toBe(true);
   // The shell boundary records the request; no installer is executed by this test.
   const launched = await app.evaluate(() => ({ file: globalThis.bbplayerLaunchedInstaller, quit: globalThis.bbplayerQuitRequested }));
   assert.equal(launched.file, path.join(profile, 'updates', files[0])); assert.equal(launched.quit, true);
   assert.equal(JSON.parse(await readFile(path.join(profile, 'library.json'), 'utf8')).playlists[0].id, 'liked');
+  assert.equal(JSON.parse(await readFile(path.join(profile, 'library.json'), 'utf8')).volume, .37);
   assert.deepEqual(errors, []);
   console.log(JSON.stringify({ result: 'PASS', live: { currentVersion: live.currentVersion, latestVersion: live.latestVersion, releaseUrl: live.releaseUrl }, simulated: ['new version', 'download', 'SHA256', 'explicit install', 'flush library', 'request installer and quit'], actualInstallerExecuted: false, rendererErrors: errors }, null, 2));
 } finally {

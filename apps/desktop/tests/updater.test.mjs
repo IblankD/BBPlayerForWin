@@ -8,6 +8,18 @@ import { ReleaseUpdater, compareVersions, LATEST_API, RELEASES } from '../electr
 
 const bytes = Buffer.from('verified test package');
 const digest = createHash('sha256').update(bytes).digest('hex');
+test('cache cleanup removes only managed installers and invalidates ready state', async () => {
+  const { updater, directory } = await fixture();
+  await updater.check(); await updater.download();
+  await writeFile(path.join(directory, 'personal.exe'), 'preserve');
+  assert.equal((await updater.cacheInfo()).files, 1);
+  assert.deepEqual(await updater.clearCache(), { files: 0, bytes: 0 });
+  assert.equal(updater.state.status, 'available');
+  assert.equal(updater.readyFile, null);
+  assert.deepEqual(await readdir(directory), ['personal.exe']);
+  await assert.rejects(updater.install());
+  updater.state.status = 'downloading'; await assert.rejects(updater.clearCache(), /等待/);
+});
 const release = () => ({ tag_name: 'v0.1.4', html_url: `${RELEASES}/tag/v0.1.4`, body: 'Release notes', draft: false, prerelease: false, assets: [{ name: 'BBPlayer-0.1.4-x64-Setup.exe', state: 'uploaded', size: bytes.length, digest: `sha256:${digest}`, browser_download_url: `${RELEASES}/download/v0.1.4/BBPlayer-0.1.4-x64-Setup.exe` }] });
 async function fixture(options = {}) {
   const directory = await mkdtemp(path.join(os.tmpdir(), 'bbplayer-update-test-'));

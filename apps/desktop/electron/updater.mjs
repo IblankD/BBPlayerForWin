@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from 'node:crypto';
-import { mkdir, open, unlink } from 'node:fs/promises';
+import { mkdir, open, unlink, readdir, stat } from 'node:fs/promises';
 import { createReadStream } from 'node:fs';
 import path from 'node:path';
 import { Readable } from 'node:stream';
@@ -57,6 +57,28 @@ export class ReleaseUpdater {
     this.asset = null; this.readyFile = null; this.checking = null; this.downloadAbort = null;
   }
   update(value) { this.state = { ...this.state, ...value }; this.notify(this.state); return this.state; }
+  async cacheInfo() {
+    let entries;
+    try { entries = await readdir(this.directory, { withFileTypes: true }); } catch (error) { if (error.code === 'ENOENT') return { files: 0, bytes: 0 }; throw error; }
+    const files = entries.filter(entry => entry.isFile() && /^[\da-f]{8}-[\da-f]{4}-[\da-f]{4}-[\da-f]{4}-[\da-f]{12}-BBPlayer-\d+\.\d+\.\d+-x64-Setup\.exe$/.test(entry.name));
+    let bytes = 0;
+    for (const entry of files) bytes += (await stat(path.join(this.directory, entry.name))).size;
+    return { files: files.length, bytes };
+  }
+  async clearCache() {
+    if (this.cacheBusy || ['downloading', 'installing'].includes(this.state.status)) throw new Error('请等待更新操作完成后清理缓存');
+    this.cacheBusy = true;
+    try {
+      let entries;
+      try { entries = await readdir(this.directory, { withFileTypes: true }); } catch (error) { if (error.code === 'ENOENT') return { files: 0, bytes: 0 }; throw error; }
+      for (const entry of entries) if (entry.isFile() && /^[\da-f]{8}-[\da-f]{4}-[\da-f]{4}-[\da-f]{4}-[\da-f]{12}-BBPlayer-\d+\.\d+\.\d+-x64-Setup\.exe$/.test(entry.name)) await unlink(path.join(this.directory, entry.name));
+      return await this.cacheInfo();
+    } finally {
+      this.readyFile = null;
+      if (this.state.status === 'ready') this.update({ status: 'available', progress: 0 });
+      this.cacheBusy = false;
+    }
+  }
   async check() {
     if (this.checking) return this.checking;
     if (['downloading', 'ready', 'installing'].includes(this.state.status)) return this.state;
@@ -122,6 +144,7 @@ export class ReleaseUpdater {
     throw new Error('更新下载重定向过多');
   }
   async download() {
+    if (this.cacheBusy) throw new Error('正在清理更新缓存，请稍后再下载');
     if (this.state.status !== 'available' || !this.state.canDownload || !this.asset) throw new Error('当前没有可校验的安装版更新');
     const asset = this.asset;
     this.downloadAbort = new AbortController();
@@ -159,6 +182,7 @@ export class ReleaseUpdater {
   }
   cancel() { this.downloadAbort?.abort(); }
   async install() {
+    if (this.cacheBusy) throw new Error('正在清理更新缓存，请稍后再安装');
     if (this.state.status !== 'ready' || !this.readyFile || this.state.portable || !this.state.enabled) throw new Error('没有已校验的安装包');
     this.update({ status: 'installing', error: '' });
     try {
@@ -168,6 +192,7 @@ export class ReleaseUpdater {
       if (result) throw new Error(`无法打开安装程序：${result}`);
       this.quit(); return this.state;
     } catch (error) {
+      await unlink(this.readyFile.path).catch(() => {});
       this.readyFile = null;
       return this.update({ status: 'available', progress: 0, error: error instanceof Error ? error.message : '安装启动失败' });
     }

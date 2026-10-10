@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { BilibiliClient } from './api.mjs';
 import { validateLibrary, validateSession } from './core.mjs';
 import { ReleaseUpdater, fetchWithElectron } from './updater.mjs';
+import { LibraryStorage, decodeLibrary, decodeSession, encodeSession } from './storage.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const devUrl = !app.isPackaged && process.env.BBPLAYER_DEV_URL === 'http://127.0.0.1:5173' ? process.env.BBPLAYER_DEV_URL : null;
@@ -20,6 +21,7 @@ let client;
 let library;
 let playerSession = validateSession();
 let updater;
+let storage;
 let updateTimer;
 let tray;
 let trayMenu;
@@ -42,7 +44,8 @@ function enqueueWrite(name, content) {
   writing = next;
   return next;
 }
-const saveSession = () => enqueueWrite('session.json', JSON.stringify(playerSession));
+function enqueueTask(task) { const next = writing.catch(() => {}).then(task); writing = next; return next; }
+const saveSession = () => enqueueWrite('session.json', encodeSession(playerSession));
 function showWindow() {
   if (!window || window.isDestroyed()) return;
   if (window.isMinimized()) window.restore();
@@ -90,15 +93,22 @@ async function initialize() {
   handle('update:cancel', () => updater.cancel());
   handle('update:install', () => updater.install());
   handle('update:openRelease', () => updater.openRelease());
-  try { playerSession = validateSession(JSON.parse(await readFile(location('session.json'), 'utf8'))); } catch { /* Older versions have no session. */ }
-  try { library = validateLibrary(JSON.parse(await readFile(location('library.json'), 'utf8'))); }
-  catch (error) {
-    if (error.code !== 'ENOENT') {
-      await dialog.showMessageBox({ type: 'warning', title: '歌单暂时无法读取', message: '本地歌单数据无法读取，原文件会保留备份。', detail: '你可以从 JSON 备份恢复歌单。' });
-      try { await rename(location('library.json'), location(`library-corrupt-${Date.now()}.json`)); } catch { /* Preserve unreadable original. */ }
-    }
-    library = defaults();
-  }
+  await updater.clearCache().catch(() => {});
+  handle('update:cache', () => updater.cacheInfo());
+  handle('update:clearCache', () => updater.clearCache());
+  try { playerSession = decodeSession(JSON.parse(await readFile(location('session.json'), 'utf8'))); }
+  catch (error) { if (error.code === 'SCHEMA_VERSION') throw error; }
+  storage = new LibraryStorage(app.getPath('userData'), defaults);
+  const loaded = await storage.load(); library = loaded.library;
+  handle('library:notice', () => loaded.notice);
+  handle('backup:list', () => enqueueTask(() => storage.list()));
+  handle('backup:create', () => enqueueTask(() => storage.backup()));
+  handle('backup:restore', async id => {
+    const result = await dialog.showMessageBox(window, { type: 'question', title: '恢复歌单备份', message: '用此备份替换当前歌单、历史、歌词与播放设置？', detail: '恢复前会自动备份当前数据。播放队列与登录状态保留。', buttons: ['恢复备份', '取消'], defaultId: 1, cancelId: 1 });
+    if (result.response !== 0) return null;
+    await flushRenderer();
+    return enqueueTask(async () => { library = await storage.restore(id); return library; });
+  });
   let cookie = '';
   try { cookie = safeStorage.decryptString(await readFile(location('account.bin'))); } catch { /* First launch or expired OS credentials. */ }
   client = new BilibiliClient({ cookie, onCookie: async value => {
@@ -119,11 +129,9 @@ async function initialize() {
   handle('player:status', input => {
     playerInfo = { title: typeof input?.title === 'string' ? input.title.slice(0, 500) : '', playing: input?.playing === true };
     refreshTray();
-    if (app.isPackaged) {
-      updateTimer = setTimeout(() => { void updater.check(); updateTimer = setInterval(() => { void updater.check(); }, 6 * 3600000); }, 10000);
-    }
+
   });
-  handle('library:save', async input => { const next = validateLibrary(input); await enqueueWrite('library.json', JSON.stringify(next)); library = next; });
+  handle('library:save', async input => { const next = validateLibrary(input); await enqueueTask(async () => { await storage.save(next); library = next; }); });
   handle('library:export', async () => {
     const { canceled, filePath } = await dialog.showSaveDialog(window, { title: '导出歌单备份', defaultPath: 'BBPlayer-library.json', filters: [{ name: 'JSON', extensions: ['json'] }] });
     if (canceled || !filePath) return false;
@@ -134,7 +142,7 @@ async function initialize() {
     if (canceled) return null;
     const raw = await readFile(filePaths[0], 'utf8');
     if (raw.length > 20 * 1024 * 1024) throw new Error('备份文件过大');
-    const incoming = validateLibrary(JSON.parse(raw));
+    const incoming = decodeLibrary(JSON.parse(raw));
     const playlists = library.playlists.map(p => ({ ...p, tracks: [...p.tracks] }));
     for (const p of incoming.playlists) {
       const existing = playlists.find(item => item.id === p.id);
@@ -142,7 +150,7 @@ async function initialize() {
       else playlists.push(p);
     }
     const next = validateLibrary({ ...library, playlists, lyrics: { ...library.lyrics, ...incoming.lyrics } });
-    await enqueueWrite('library.json', JSON.stringify(next)); library = next; return library;
+    await enqueueTask(async () => { await storage.save(next, true); library = next; }); return library;
   });
   handle('api:search', (keyword, page) => client.search(keyword, page));
   handle('api:stream', (bvid, cid) => client.stream(bvid, cid));
@@ -224,6 +232,9 @@ else {
     await createWindow();
     tray = new Tray(path.join(here, '../build/icon.ico'));
     tray.on('double-click', showWindow);
+    if (app.isPackaged) {
+      updateTimer = setTimeout(() => { void updater.check(); updateTimer = setInterval(() => { void updater.check(); }, 6 * 3600000); }, 10000);
+    }
     refreshTray();
     for (const [key, command] of [['MediaPlayPause', 'toggle'], ['MediaNextTrack', 'next'], ['MediaPreviousTrack', 'previous']]) globalShortcut.register(key, () => window?.webContents.send('player:command', command));
   }).catch(async error => { await dialog.showMessageBox({ type: 'error', message: 'BBPlayer 启动失败', detail: error.message }); app.quit(); });

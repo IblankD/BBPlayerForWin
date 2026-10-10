@@ -7,6 +7,11 @@ export interface Part { cid: number; title: string; duration: number }
 export interface PlayerSession { queue: Track[]; current: Track | null; position: number; shuffle: boolean; view: string; closeBehavior: 'ask' | 'tray' | 'quit' }
 export interface UpdateState { status: 'idle' | 'checking' | 'available' | 'current' | 'downloading' | 'ready' | 'installing' | 'error'; currentVersion: string; latestVersion: string; notes: string; releaseUrl: string; portable: boolean; enabled: boolean; progress: number; error: string; canDownload: boolean; checkedAt?: number }
 export interface Desktop {
+  listBackups(): Promise<{ id: string; createdAt: number; playlists: number; tracks: number }[]>;
+  createBackup(): Promise<string>;
+  restoreBackup(id: string): Promise<Library | null>;
+  updateCache(): Promise<{ files: number; bytes: number }>;
+  clearUpdateCache(): Promise<{ files: number; bytes: number }>;
   updateState(): Promise<UpdateState>;
   checkUpdate(): Promise<UpdateState>;
   downloadUpdate(): Promise<UpdateState>;
@@ -21,6 +26,7 @@ export interface Desktop {
   onSaveRequest(callback: () => Promise<void>): () => void;
   onCloseBehavior(callback: (value: PlayerSession['closeBehavior']) => void): () => void;
   loadLibrary(): Promise<Library>;
+  dataNotice(): Promise<string>;
   saveLibrary(input: Library): Promise<void>;
   exportLibrary(): Promise<boolean>;
   importLibrary(): Promise<Library | null>;

@@ -5,6 +5,11 @@ const invoke = async (channel, ...args) => {
   return result.value;
 };
 contextBridge.exposeInMainWorld('desktop', {
+  listBackups: () => invoke('backup:list'),
+  createBackup: () => invoke('backup:create'),
+  restoreBackup: id => invoke('backup:restore', id),
+  updateCache: () => invoke('update:cache'),
+  clearUpdateCache: () => invoke('update:clearCache'),
   updateState: () => invoke('update:state'),
   checkUpdate: () => invoke('update:check'),
   downloadUpdate: () => invoke('update:download'),
@@ -34,6 +39,7 @@ contextBridge.exposeInMainWorld('desktop', {
     return () => ipcRenderer.removeListener('session:flush', listener);
   },
   loadLibrary: () => invoke('library:load'),
+  dataNotice: () => invoke('library:notice'),
   saveLibrary: input => invoke('library:save', input),
   exportLibrary: () => invoke('library:export'),
   importLibrary: () => invoke('library:import'),
