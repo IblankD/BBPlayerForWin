@@ -60,7 +60,12 @@ export class LibraryStorage {
     } catch (error) {
       if (error.code === 'SCHEMA_VERSION') throw error;
       raw = null;
-      if (error.code === 'ENOENT') { this.current = this.defaults(); await this.atomic(encodeLibrary(this.current)); }
+      if (error.code === 'ENOENT') {
+        const latest = (await this.list())[0];
+        this.current = latest ? decodeLibrary(JSON.parse(await readFile(path.join(this.backups, latest.id), 'utf8'))) : this.defaults();
+        await this.atomic(encodeLibrary(this.current));
+        if (latest) notice = '歌单文件丢失，已从最近的自动备份恢复。';
+      }
       else {
         // Move must succeed before a replacement can be written.
         await rename(this.file, path.join(this.directory, `library-corrupt-${this.now()}-${randomUUID()}.json`));
@@ -86,8 +91,13 @@ export class LibraryStorage {
     if (typeof id !== 'string' || !snapshotName.test(id)) throw new Error('备份名称无效');
     const value = decodeLibrary(JSON.parse(await readFile(path.join(this.backups, id), 'utf8')));
     // Preserve the state being replaced, even if the target matches it.
-    await this.backup(); await this.atomic(encodeLibrary(value)); this.current = value;
     await this.backup();
+    // Complete both protective snapshots before committing the replacement.
+    // A failed backup must not report failure after changing the live library.
+    const restoredSnapshot = await this.backup(value);
+    try { await this.atomic(encodeLibrary(value)); }
+    catch (error) { await unlink(path.join(this.backups, restoredSnapshot)).catch(() => {}); throw error; }
+    this.current = value;
     return value;
   }
 }

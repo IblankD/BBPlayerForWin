@@ -116,6 +116,11 @@ async function initialize() {
     await enqueueWrite('account.bin', value ? safeStorage.encryptString(value) : Buffer.alloc(0));
   } });
   handle('library:load', () => library);
+  handle('library:confirmDelete', async name => {
+    if (typeof name !== 'string' || name.length > 100) throw new Error('歌单名称无效');
+    const result = await dialog.showMessageBox(window, { type: 'question', title: '删除歌单', message: `删除歌单“${name}”？`, detail: '删除前会创建备份，也可在本次运行中撤销删除。', buttons: ['删除歌单', '取消'], defaultId: 1, cancelId: 1 });
+    return result.response === 0;
+  });
   handle('session:load', () => playerSession);
   handle('session:save', async input => {
     playerSession = validateSession({ ...input, closeBehavior: playerSession.closeBehavior });

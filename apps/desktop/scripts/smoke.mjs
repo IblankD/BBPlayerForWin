@@ -72,7 +72,7 @@ try {
   const exported = JSON.parse(await readFile(backup, 'utf8'));
   assert.equal(exported.playlists.find(p => p.name === '桌面验收歌单').tracks.length, 1);
   assert.equal(exported.cookie, undefined);
-  exported.playlists.push({ id: 'imported', name: '导入验收歌单', tracks: [] });
+  exported.playlists.push({ id: 'imported', name: '导入验收歌单', tracks: [{ bvid: 'BV1xx411c7mD', title: '队列验收歌曲', artist: '', cover: '', duration: 120 }] });
   await writeFile(backup, JSON.stringify(exported));
   await app.evaluate(({ dialog }, filePath) => { dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [filePath] }); }, backup);
   await page.getByRole('button', { name: '导入歌单备份', exact: true }).click();
@@ -133,6 +133,33 @@ try {
   assert.equal(saved.playlists.find(p => p.id === 'liked').tracks.length, 1);
   assert.equal(saved.history.length, 1);
   assert.match(saved.lyrics.BV1GJ411x7h7, /歌词测试/);
+  await app.evaluate(({ dialog }) => { dialog.showMessageBox = async () => ({ response: 1 }); });
+  await page.getByRole('button', { name: '删除歌单', exact: true }).click();
+  await expect(page.getByRole('heading', { name: '桌面验收歌单', exact: true })).toBeVisible();
+  await app.evaluate(({ dialog }) => { dialog.showMessageBox = async () => ({ response: 0 }); });
+  await page.getByRole('button', { name: '删除歌单', exact: true }).click();
+  await page.getByRole('button', { name: '撤销删除', exact: true }).click();
+  await page.getByRole('heading', { name: '桌面验收歌单', exact: true }).waitFor();
+  await expect.poll(() => page.evaluate(async () => (await window.desktop.loadLibrary()).playlists.find(p => p.name === '桌面验收歌单')?.tracks.length)).toBe(1);
+  await page.getByRole('button', { name: '导入验收歌单', exact: true }).click();
+  await page.getByRole('button', { name: '加入播放队列', exact: true }).click();
+  await expect.poll(() => page.evaluate(async () => (await window.desktop.loadSession()).queue.length)).toBe(2);
+  await page.getByRole('button', { name: '下一首播放', exact: true }).click();
+  await page.getByRole('button', { name: '桌面验收歌单', exact: true }).click();
+  await page.getByRole('button', { name: '替换播放队列', exact: true }).click();
+  await expect.poll(() => page.evaluate(async () => (await window.desktop.loadSession()).queue.length)).toBe(1);
+  // Replace only the IPC save response to exercise persistent renderer feedback.
+  await app.evaluate(({ ipcMain }) => {
+    globalThis.bbplayerOriginalSave = ipcMain._invokeHandlers.get('library:save');
+    ipcMain.removeHandler('library:save'); ipcMain.handle('library:save', () => ({ ok: false, error: '模拟保存失败' }));
+  });
+  await page.getByRole('slider', { name: '音量' }).fill('0.33');
+  await page.getByRole('alert').filter({ hasText: '歌单尚未保存' }).waitFor();
+  await app.evaluate(({ ipcMain }) => { ipcMain.removeHandler('library:save'); ipcMain.handle('library:save', globalThis.bbplayerOriginalSave); });
+  await page.getByRole('button', { name: '重试保存', exact: true }).click();
+  await expect(page.getByRole('alert').filter({ hasText: '歌单尚未保存' })).toHaveCount(0);
+  await expect.poll(() => page.evaluate(async () => (await window.desktop.loadLibrary()).volume)).toBe(.33);
+  await page.getByRole('slider', { name: '音量' }).fill('0.42');
   await page.evaluate(() => window.desktop.windowControl('quit')).catch(() => {});
   await app.close().catch(() => {});
   const savedGeometry = JSON.parse(await readFile(path.join(testData, 'window.json'), 'utf8'));

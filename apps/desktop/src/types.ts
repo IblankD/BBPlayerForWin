@@ -26,6 +26,7 @@ export interface Desktop {
   onSaveRequest(callback: () => Promise<void>): () => void;
   onCloseBehavior(callback: (value: PlayerSession['closeBehavior']) => void): () => void;
   loadLibrary(): Promise<Library>;
+  confirmDeletePlaylist(name: string): Promise<boolean>;
   dataNotice(): Promise<string>;
   saveLibrary(input: Library): Promise<void>;
   exportLibrary(): Promise<boolean>;

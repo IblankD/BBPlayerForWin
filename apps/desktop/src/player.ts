@@ -59,6 +59,16 @@ export class PlaybackController {
     this.update({ queue: session.queue, current: session.current, position: session.position, duration: session.current?.duration || 0, parts: [], playing: false, buffering: false, status: session.current ? '已恢复上次进度，点击播放继续' : '' });
   }
   setQueue(queue: Track[]) { this.update({ queue }); }
+  appendQueue(items: Track[], next = false) {
+    const requested = new Set(items.map(track => track.bvid));
+    const base = next ? this.state.queue.filter(track => track.bvid === this.state.current?.bvid || !requested.has(track.bvid)) : this.state.queue;
+    const known = new Set(next ? [this.state.current?.bvid] : base.map(track => track.bvid));
+    const additions = items.filter(track => { if (known.has(track.bvid)) return false; known.add(track.bvid); return true; });
+    const index = next ? Math.max(0, base.findIndex(track => track.bvid === this.state.current?.bvid) + 1) : base.length;
+    const queue = [...base.slice(0, index), ...additions, ...base.slice(index)];
+    if (queue.length > 10000) throw new Error('播放队列最多支持 10000 首歌曲');
+    this.update({ queue });
+  }
   play(track: Track, items?: Track[], cid?: number) {
     this.cancel(); this.audio?.pause(); this.audio?.removeAttribute('src'); this.audio?.load();
     this.wantsPlay = true; this.attempts = 0; this.refresh = true; this.pending = 0;

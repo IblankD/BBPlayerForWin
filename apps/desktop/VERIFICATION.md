@@ -1,17 +1,17 @@
-# Windows 0.1.4 验收记录
+# Windows 0.1.5 验收记录
 
-验收日期：2026-10-10。平台：Windows x64，Node 24.12.0，Electron 44.6.0。
+验收日期：2026-10-15。平台：Windows x64，Node 24.12.0，Electron 44.6.0。
 
 ## 已通过
 
 - `pnpm --dir apps/desktop type-check`：TypeScript 检查通过。
 - `pnpm --dir apps/desktop lint`：桌面 UI、主进程、预加载和测试脚本检查通过。
-- `pnpm --dir apps/desktop test`：33 项测试全部通过。覆盖签名、账户隔离、CDN/Range、存储、歌词和播放恢复，以及语义版本比较、更新来源限制、文件大小和 SHA256、安装前再次校验、取消下载、可信重定向、限流备用检查、开发/便携模式限制和安装请求顺序。
+- `pnpm --dir apps/desktop test`：38 项测试全部通过。覆盖签名、账户隔离、CDN/Range、存储、歌词和播放恢复，以及语义版本比较、更新来源限制、文件大小和 SHA256、安装前再次校验、取消下载、可信重定向、限流备用检查、开发/便携模式限制和安装请求顺序。
 - `pnpm --dir apps/desktop dist:win`：安装包、便携程序和解包后的应用全部生成。
 - 开发 Electron 和打包后 `release/win-unpacked/BBPlayer.exe` 均通过完整烟雾测试。
 - 发布便携程序通过 `pnpm --dir apps/desktop smoke:portable` 的实际启动、搜索、播放、拖动进度、暂停和关闭测试。
 
-真实接口验收使用公开 MV `BV1GJ411x7h7`。HTMLAudio 识别的时长为 212.308833 秒，播放后 readyState 为 4。便携版实际跳转到 60.01613 秒并暂停，渲染进程没有运行错误。
+真实接口验收使用公开 MV `BV1GJ411x7h7`。HTMLAudio 识别的时长为 212.308833 秒，播放后 readyState 为 4。便携版实际跳转到 60.001675 秒并暂停，渲染进程没有运行错误。
 
 沿用 0.1.1 的蓝白主题和 7 尺寸 ICO；新增关闭偏好设置，已检查实际界面显示。
 
@@ -29,7 +29,7 @@
 
 ## 更新功能验收
 
-- `pnpm --dir apps/desktop smoke:update`：在真实打包应用中打开更新界面，读取正式发布版本。验收时公共 API 限流，通过 GitHub 最新发布页确认版本；发布前检查读到当前 0.1.4、已发布的 0.1.3。
+- `pnpm --dir apps/desktop smoke:update`：在真实打包应用中打开更新界面，读取正式发布版本。验收时公共 API 限流，通过 GitHub 最新发布页确认版本；本版发布前实网检查读到当前 0.1.5、已发布的 0.1.4。
 - 使用模拟未来版本和小型安装包数据，执行实际 IPC、文件下载、SHA256 校验、安装按钮及退出前保存流程；仅在网络和系统执行边界替换响应，确认下载后不会自行运行安装包。
 - 点击“退出并安装更新”后，再次校验文件、保存歌单，并请求打开指定安装包和退出。系统启动函数由测试记录代替，**未执行真实安装向导或覆盖现有安装**。
 - 更新界面截图保存在 `test-results/desktop-updates.png`。版本说明按普通文本显示。
@@ -38,8 +38,8 @@
 
 | 文件 | 字节数 | SHA256 |
 | --- | ---: | --- |
-| `release/BBPlayer-0.1.4-x64-Portable.exe` | 114261122 | `FFCA37703318C226DCE452F009293A333BEC759C2AF4F097ABCAF45CE25BA0D9` |
-| `release/BBPlayer-0.1.4-x64-Setup.exe` | 114561275 | `7509B880C6AD119988EDAFFCF024A24B42118D4AB6A482702EC91C8720F8BA13` |
+| `release/BBPlayer-0.1.5-x64-Portable.exe` | 114261921 | `B0B650F1DA297D25A1037AD8B8CC52D3051F17E7314E92A1F044F030C2AFDCD6` |
+| `release/BBPlayer-0.1.5-x64-Setup.exe` | 114562070 | `48F7EB252DCDB66FB8DED281EB07E3FBCFBA0AF51237B4F86316FAB9B4E77FE3` |
 
 界面截图位于 `test-results/desktop-home.png`、`desktop-playback.png`、`desktop-settings.png` 和 `portable-playback.png`。主页截图另有根目录 `docs/images/desktop-home.png`，供 README 展示；其余验收截图和构建产物在本地保留，不纳入源码。
 
@@ -73,3 +73,11 @@ pnpm --dir apps/desktop smoke:portable
 - 实际打包主程序通过完整播放、网络恢复、托盘和重启验收；最终便携 EXE 实际播放并拖动至 60 秒，渲染进程无错误。
 - 自动更新计时器只在应用启动时创建一次，播放状态回调只刷新托盘；下载/安装期间缓存清理被拒绝，未知名称文件不删除。
 - 设置恢复界面截图：test-results/desktop-backups.png。备份仅覆盖音乐库；实际账号扫码及 NSIS 覆盖安装后登录状态保留仍需人工验收。
+## 0.1.5 验收
+
+- 38 项测试通过。新增文件丢失后备份恢复、两次备份分别失败、原子恢复写入失败、队列去重及下一首移动、10000 首上限。故障注入后确认内存与实时文件保持原状态，未提交目标快照不进入恢复候选。
+- 开发 Electron 和最终打包主程序均通过完整 smoke；新增删除取消、确认后备份与撤销、队列追加/下一首/替换、保存失败持续提示及重试。保存失败通过替换 IPC 响应模拟，重试恢复原处理器并验证真实落盘。
+- 实际 0.1.4 便携版创建的数据由最终 0.1.5 打包主程序在同一临时目录载入，歌单、音量和会话保留；恢复前后快照、文件损坏恢复及主动移除 library.json 后恢复均通过。
+- 最终更新界面与缓存清理/重新下载/请求安装测试通过；仍未执行真实安装向导。最终 0.1.5 便携 EXE 播放并拖动至约 60 秒，渲染进程无错误。
+- 桌面类型检查、lint 和构建通过。全仓根目录检查仍因移动端依赖缺失而缺少 tsgo/oxlint，未修改移动端。
+- GitHub 建立 0.1.5、0.2.0、0.2.1 里程碑；0.1.5 对应 Issue #1–#4。未来里程碑为规划，不设发布日期。

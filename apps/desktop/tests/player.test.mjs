@@ -20,6 +20,22 @@ function fixture(t, stream = async (bvid, cid) => ({ url: `bbmedia://audio/${bvi
   const detach = player.attach(audio); t.after(detach);
   return { player, audio, heard, notices };
 }
+test('queue append deduplicates without interrupting playback; next moves existing songs after current', async t => {
+  const { player, audio } = fixture(t);
+  const third = { ...track, bvid: 'BV1ab411c7mD', title: 'Third' };
+  player.play(track, [track, other]); await flush(); player.seek(42);
+  const source = audio.src;
+  player.appendQueue([other, third, third]); assert.deepEqual(player.state.queue, [track, other, third]);
+  player.appendQueue([third, third, track], true); assert.deepEqual(player.state.queue, [track, third, other]);
+  assert.equal(audio.src, source); assert.equal(audio.currentTime, 42); assert.equal(audio.paused, false);
+  assert.equal(player.state.current.bvid, track.bvid);
+});
+test('queue limit refuses additions without changing the existing queue', t => {
+  const { player } = fixture(t);
+  const queue = Array.from({ length: 10000 }, (_, i) => ({ ...track, bvid: `BV${String(i).padStart(10, '0')}` }));
+  player.setQueue(queue); assert.throws(() => player.appendQueue([other]), /10000/);
+  assert.deepEqual(player.state.queue, queue);
+});
 test('session migrates an old profile, normalizes queue and never stores URLs or credentials', () => {
   assert.deepEqual(validateSession(), { queue: [], current: null, position: 0, shuffle: false, view: 'home', closeBehavior: 'ask' });
   const saved = validateSession({ queue: [null, { bvid: 'bad' }], current: { ...track, url: 'secret', cookie: 'secret' }, position: Infinity, view: 'search', closeBehavior: 'tray', shuffle: true });

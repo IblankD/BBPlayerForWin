@@ -39,6 +39,7 @@ contextBridge.exposeInMainWorld('desktop', {
     return () => ipcRenderer.removeListener('session:flush', listener);
   },
   loadLibrary: () => invoke('library:load'),
+  confirmDeletePlaylist: name => invoke('library:confirmDelete', name),
   dataNotice: () => invoke('library:notice'),
   saveLibrary: input => invoke('library:save', input),
   exportLibrary: () => invoke('library:export'),

@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import { Search, House, Heart, History, FolderHeart, Plus, Music2, Play, Pause, SkipBack, SkipForward, Shuffle, Repeat, Repeat1, Volume2, ListMusic, Mic2, Minus, Square, X, ChevronRight, ChevronLeft, Download, Upload, LogOut, LoaderCircle, Trash2, Headphones, Disc3, Check, RefreshCw } from 'lucide-react';
 import QRCode from 'qrcode';
-import type { Account, Favorite, Library, PlayerSession, Track } from './types';
+import type { Account, Favorite, Library, Playlist, PlayerSession, Track } from './types';
 import { parseLrc } from './lyrics';
 import { usePlayback } from './usePlayback';
 import UpdatePanel from './UpdatePanel';
@@ -31,6 +31,9 @@ export default function App() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [toast, setToast] = useState('');
+  const [saveError, setSaveError] = useState('');
+  const [deleted, setDeleted] = useState<{ playlist: Playlist; index: number } | null>(null);
+  const [deleting, setDeleting] = useState(false);
   const [shuffle, setShuffle] = useState(false);
   const [closeBehavior, setCloseBehavior] = useState<PlayerSession['closeBehavior']>('ask');
   const [sessionReady, setSessionReady] = useState(false);
@@ -50,6 +53,10 @@ export default function App() {
   useEffect(() => { snapshot.current = { queue, current, library, shuffle }; }, [queue, current, library, shuffle]);
   const fail = useCallback((cause: unknown) => notify(cause instanceof Error ? cause.message : '操作失败'), [notify]);
   const run = (promise: Promise<unknown>) => { void promise.catch(fail); };
+  const persistLibrary = useCallback(async (value: Library) => {
+    try { await window.desktop.saveLibrary(value); setSaveError(''); }
+    catch (cause) { setSaveError(cause instanceof Error ? cause.message : '保存失败'); throw cause; }
+  }, []);
 
   useEffect(() => {
     let active = true;
@@ -79,9 +86,9 @@ export default function App() {
   useEffect(() => window.desktop?.onSaveRequest(async () => {
     try {
       await saveSession();
-      if (sessionSnapshot.current.sessionReady) await window.desktop.saveLibrary(sessionSnapshot.current.library);
+      if (sessionSnapshot.current.sessionReady) await persistLibrary(sessionSnapshot.current.library);
     } catch (cause) { fail(cause); }
-  }), [saveSession, fail]);
+  }), [saveSession, fail, persistLibrary]);
   useEffect(() => { if (sessionReady) void window.desktop.playerStatus({ title: current?.title || '', playing }).catch(fail); }, [current, playing, sessionReady, fail]);
   useEffect(() => window.desktop?.onCloseBehavior(setCloseBehavior), []);
   useEffect(() => {
@@ -90,7 +97,7 @@ export default function App() {
       if (value.status === 'available' && announced !== value.latestVersion) { announced = value.latestVersion; notify(`发现新版本 ${value.latestVersion}，可在“检查更新”中升级。`); }
     });
   }, [notify]);
-  useEffect(() => { if (ready) void window.desktop.saveLibrary(library).catch(fail); }, [library, ready, fail]);
+  useEffect(() => { if (ready) void persistLibrary(library).catch(fail); }, [library, ready, fail, persistLibrary]);
   useEffect(() => { if (audio.current) audio.current.volume = library.volume; }, [library.volume]);
   useEffect(() => { if (!toast) return; const timer = setTimeout(() => setToast(''), 4500); return () => clearTimeout(timer); }, [toast]);
 
@@ -208,6 +215,32 @@ export default function App() {
   const lines = useMemo(() => parseLrc(current ? library.lyrics[current.bvid] || '' : ''), [library.lyrics, current]);
   const activeLine = lines.findLastIndex(line => line.time <= position);
 
+  async function deletePlaylist(list: Playlist) {
+    if (deleting) return;
+    setDeleting(true);
+    try {
+      if (!await window.desktop.confirmDeletePlaylist(list.name)) return;
+      const value = sessionSnapshot.current.library;
+      await persistLibrary(value); await window.desktop.createBackup();
+      setDeleted({ playlist: list, index: value.playlists.findIndex(p => p.id === list.id) });
+      setLibrary(current => ({ ...current, playlists: current.playlists.filter(p => p.id !== list.id) }));
+      navigate('home'); notify('歌单已删除，可撤销');
+    } finally { setDeleting(false); }
+  }
+  function undoDelete() {
+    if (!deleted) return;
+    if (library.playlists.length >= 100) { notify('歌单数量已满，请从备份恢复'); return; }
+    setLibrary(value => {
+      if (value.playlists.some(p => p.id === deleted.playlist.id)) return value;
+      const playlists = [...value.playlists]; playlists.splice(Math.max(0, deleted.index), 0, deleted.playlist);
+      return { ...value, playlists };
+    });
+    navigate(`playlist:${deleted.playlist.id}`); setDeleted(null); notify('已撤销删除');
+  }
+  function queueTracks(mode: 'append' | 'replace' | 'next') {
+    try { if (mode === 'replace') controller.setQueue(tracks); else controller.appendQueue(tracks, mode === 'next'); notify(mode === 'replace' ? '已替换播放队列' : mode === 'next' ? '已安排下一首播放' : '已追加到播放队列（自动去重）'); }
+    catch (cause) { fail(cause); }
+  }
   function trackList(items: Track[], compact = false) {
     return <div className={`track-list ${compact ? 'compact' : ''}`}>
       {!compact && <div className="track-heading"><span>#</span><span>歌曲 / 视频</span><span>UP 主</span><span>时长</span><span /></div>}
@@ -237,7 +270,7 @@ export default function App() {
       <div className="sidebar-bottom"><button className="text-button" onClick={() => setModal('settings')}><Download size={13} />歌单备份与设置</button><button className="text-button update-entry" onClick={() => setModal('updates')}><RefreshCw size={13} />检查更新</button><div className="local-note"><span className="status-dot" />音乐与你的歌单，留在本地</div><button className="account" onClick={() => setModal(account ? 'settings' : 'login')}><span className="avatar">{account?.name.slice(0, 1) || <img src="./app-icon.png" alt="" />}</span><span><strong>{account?.name || '登录 B 站账号'}</strong><small>{account ? '账户与歌单备份' : '听见你的收藏'}</small></span><ChevronRight size={16} /></button></div>
     </aside>
     <div className="main-panel">
-      <header className="topbar"><form className="search-box" onSubmit={event => { event.preventDefault(); run(search(input)); }}><Search size={18} /><input aria-label="搜索音乐或 BV 号" placeholder="搜索音乐、UP 主，或粘贴 BV 号" value={input} onChange={event => setInput(event.target.value)} /><kbd>Enter</kbd></form><span className="platform-label">WINDOWS EDITION</span><div className="window-buttons"><IconButton label="最小化" onClick={() => run(window.desktop.windowControl('minimize'))}><Minus size={17} /></IconButton><IconButton label="最大化" onClick={() => run(window.desktop.windowControl('maximize'))}><Square size={13} /></IconButton><IconButton label="关闭" onClick={() => run(window.desktop.saveLibrary(library).then(() => window.desktop.windowControl('close')))}><X size={18} /></IconButton></div></header>
+      <header className="topbar"><form className="search-box" onSubmit={event => { event.preventDefault(); run(search(input)); }}><Search size={18} /><input aria-label="搜索音乐或 BV 号" placeholder="搜索音乐、UP 主，或粘贴 BV 号" value={input} onChange={event => setInput(event.target.value)} /><kbd>Enter</kbd></form><span className="platform-label">WINDOWS EDITION</span><div className="window-buttons"><IconButton label="最小化" onClick={() => run(window.desktop.windowControl('minimize'))}><Minus size={17} /></IconButton><IconButton label="最大化" onClick={() => run(window.desktop.windowControl('maximize'))}><Square size={13} /></IconButton><IconButton label="关闭" onClick={() => run(persistLibrary(library).then(() => window.desktop.windowControl('close')))}><X size={18} /></IconButton></div></header>
       <main className="content">
         {view === 'home' ? <>
           <div className="greeting"><span>YOUR EVERYDAY SOUNDTRACK</span><h1>给生活，配一点音乐。</h1><p>把喜欢的声音留下，让每一次播放都轻松一点。</p></div>
@@ -248,7 +281,7 @@ export default function App() {
           {library.history.length ? trackList(library.history.slice(0, 5), true) : <div className="welcome-empty"><Headphones size={27} /><div><strong>你的第一首歌，还在等你</strong><p>在顶部搜索喜欢的音乐，或粘贴 B 站视频链接开始播放。</p></div></div>}
         </> : <>
           <div className="page-heading"><span className="eyebrow">{view === 'search' ? 'FIND YOUR SOUND' : 'YOUR MUSIC LIBRARY'}</span><h1>{title}</h1><p>{view === 'favorites' ? '登录后，直接播放你在 B 站创建的收藏夹。' : `${tracks.length} 首${view === 'search' ? ` · 第 ${page} 页` : ''}`}</p></div>
-          {tracks.length > 0 && view !== 'favorites' && <div className="list-toolbar"><button className="primary" onClick={() => run(play(tracks[0], tracks))}><Play size={16} fill="currentColor" />播放全部</button><button className="secondary" onClick={() => { controller.setQueue(tracks); notify('已替换播放队列'); }}><ListMusic size={17} />加入播放队列</button>{playlist && playlist.id !== 'liked' && <button className="text-button danger" onClick={() => { setLibrary(value => ({ ...value, playlists: value.playlists.filter(p => p.id !== playlist.id) })); navigate('home'); }}>删除歌单</button>}</div>}
+          {tracks.length > 0 && view !== 'favorites' && <div className="list-toolbar"><button className="primary" onClick={() => run(play(tracks[0], tracks))}><Play size={16} fill="currentColor" />播放全部</button><button className="secondary" onClick={() => queueTracks('append')}><ListMusic size={17} />加入播放队列</button><button className="secondary" onClick={() => queueTracks('next')}>下一首播放</button><button className="text-button" onClick={() => queueTracks('replace')}>替换播放队列</button>{playlist && playlist.id !== 'liked' && <button className="text-button danger" disabled={deleting} onClick={() => run(deletePlaylist(playlist))}>删除歌单</button>}</div>}
           {loading ? <div className="empty"><LoaderCircle className="spin" /><h3>正在寻找好声音…</h3></div> : error ? <div className="empty"><Music2 /><h3>暂时没有加载成功</h3><p>{error}</p><button className="secondary" onClick={() => run(view === 'search' ? search(keyword, page) : favorite ? openFavorite(favorite, page) : openFavorites())}><RefreshCw size={16} />重试</button></div> : view === 'favorites' ? favorites.length ? <div className="favorites-grid">{favorites.map(f => <button key={f.id} className="favorite-card" onClick={() => run(openFavorite(f))}><span><FolderHeart size={40} /></span><h3>{f.title}</h3><p>{f.count} 个视频</p></button>)}</div> : <div className="empty"><FolderHeart /><h3>{account ? '还没有收藏夹' : '登录，听见你的收藏'}</h3><p>{account ? '在 B 站创建收藏夹后，这里就能找到它。' : '使用 B 站 App 扫码登录即可访问收藏夹。'}</p>{!account && <button className="primary" onClick={() => setModal('login')}>扫码登录</button>}</div> : tracks.length ? trackList(tracks) : <div className="empty"><Music2 /><h3>{view === 'search' ? '没有找到相关视频' : '这里还很安静'}</h3><p>{view === 'search' ? '试试歌名、歌手，或直接粘贴 BV 号。' : '搜索喜欢的音乐，点击爱心或加号保存到歌单。'}</p></div>}
           {(view === 'search' || favorite) && !loading && !error && pages > 1 && <div className="pagination"><button className="secondary" disabled={page <= 1} onClick={() => run(favorite ? openFavorite(favorite, page - 1) : search(keyword, page - 1))}><ChevronLeft size={15} />上一页</button><span>第 {page} 页</span><button className="secondary" disabled={page >= pages} onClick={() => run(favorite ? openFavorite(favorite, page + 1) : search(keyword, page + 1))}>下一页<ChevronRight size={15} /></button></div>}
         </>}
@@ -257,6 +290,8 @@ export default function App() {
     </div>
     <footer className="player-bar"><div className="now-playing"><Cover track={current} /><div><strong title={current?.title}>{current?.title || '准备好听点什么？'}</strong><small>{status || current?.artist || '搜索一首歌，开启你的音乐时刻'}</small></div>{current && <IconButton label="喜欢当前歌曲" active={liked.some(t => t.bvid === current.bvid)} onClick={() => like(current)}><Heart size={18} fill={liked.some(t => t.bvid === current.bvid) ? 'currentColor' : 'none'} /></IconButton>}</div><div className="player-center"><div className="playback-buttons"><IconButton label="随机播放" active={shuffle} onClick={() => setShuffle(value => !value)}><Shuffle size={17} /></IconButton><IconButton label="上一首" disabled={!current} onClick={() => skip(-1)}><SkipBack size={20} fill="currentColor" /></IconButton><button className="play-button" aria-label={playing ? '暂停' : '播放'} disabled={!current} onClick={toggle}>{buffering ? <LoaderCircle className="spin" size={21} /> : playing ? <Pause size={21} fill="currentColor" /> : <Play size={21} fill="currentColor" />}</button><IconButton label="下一首" disabled={!current} onClick={() => skip(1)}><SkipForward size={20} fill="currentColor" /></IconButton><IconButton label={library.repeat === 'one' ? '单曲循环' : library.repeat === 'all' ? '列表循环' : '顺序播放'} active={library.repeat !== 'off'} onClick={() => setLibrary(value => ({ ...value, repeat: value.repeat === 'all' ? 'one' : value.repeat === 'one' ? 'off' : 'all' }))}>{library.repeat === 'one' ? <Repeat1 size={17} /> : <Repeat size={17} />}</IconButton></div><div className="progress"><span>{durationText(position)}</span><input aria-label="播放进度" type="range" min="0" max={duration || 1} step="0.1" value={Math.min(position, duration || 1)} disabled={!duration} onChange={event => { if (audio.current) { controller.seek(Number(event.target.value)); } }} /><span>{durationText(duration)}</span></div></div><div className="player-tools"><IconButton label="歌词" active={modal === 'lyrics'} disabled={!current} onClick={() => { setLyricText(current ? library.lyrics[current.bvid] || '' : ''); setModal('lyrics'); }}><Mic2 size={19} /></IconButton><IconButton label="播放队列" active={modal === 'queue'} onClick={() => setModal('queue')}><ListMusic size={20} /></IconButton><Volume2 size={18} /><input type="range" aria-label="音量" min="0" max="1" step="0.01" value={library.volume} onChange={event => setLibrary(value => ({ ...value, volume: Number(event.target.value) }))} /></div></footer>
     <audio ref={audio} onEnded={() => skip(1, true)} />
+    {saveError && <div className="save-notice" role="alert">歌单尚未保存：{saveError}<button className="text-button" onClick={() => run(persistLibrary(library))}>重试保存</button></div>}
+    {deleted && <div className="undo-notice" role="status">已删除“{deleted.playlist.name}”<button className="text-button" onClick={undoDelete}>撤销删除</button><button className="text-button" aria-label="关闭撤销提示" onClick={() => setDeleted(null)}>关闭</button></div>}
     {toast && <div className="toast" role="status"><Check size={17} />{toast}</div>}
     {modal && <div className="modal-backdrop" onClick={() => setModal(null)}><section className={`modal ${modal === 'queue' ? 'queue-modal' : modal === 'lyrics' ? 'lyrics-modal' : ''}`} role="dialog" aria-modal="true" aria-label={modal === 'new' ? '新建歌单' : modal === 'login' ? '扫码登录' : modal === 'add' ? '添加到歌单' : modal === 'lyrics' ? '歌词' : modal === 'queue' ? '播放队列' : modal === 'updates' ? '软件更新' : '账户与备份'} onClick={event => event.stopPropagation()}><IconButton label="关闭弹窗" onClick={() => setModal(null)}><X size={20} /></IconButton>
       {modal === 'updates' && <UpdatePanel />}
@@ -265,7 +300,7 @@ export default function App() {
       {modal === 'add' && <><h2>添加到歌单</h2><p className="ellipsis">{target?.title}</p><div className="choose-playlist">{library.playlists.map(p => <button key={p.id} onClick={() => addTo(p.id)}><ListMusic size={19} /><span>{p.name}</span><small>{p.tracks.length} 首</small><Plus size={17} /></button>)}</div></>}
       {modal === 'queue' && <><h2>播放队列 <small>{queue.length} 首</small></h2><p>点击歌曲立即播放</p>{queue.length ? trackList(queue, true) : <div className="empty"><ListMusic /><h3>还没有待播放的音乐</h3></div>}{parts.length > 1 && <div className="parts"><h3>当前视频的分 P</h3>{parts.map(part => <button className="secondary" key={part.cid} onClick={() => current && run(play(current, undefined, part.cid))}>{part.title}</button>)}</div>}</>}
       {modal === 'lyrics' && <><span className="eyebrow">WORDS THAT STAY</span><h2 className="ellipsis">{current?.title}</h2><div className="lyric-preview">{lines.length ? lines.map((line, i) => <p className={i === activeLine ? 'active' : ''} key={`${line.time}-${i}`}>{line.text || '♪'}</p>) : <p>粘贴 LRC 歌词，跟着音乐一起唱。</p>}</div><details open={!lines.length}><summary>编辑 LRC 歌词</summary><textarea aria-label="LRC 歌词" placeholder={'[00:00.00] 第一行歌词\n[00:05.00] 第二行歌词'} value={lyricText} onChange={event => setLyricText(event.target.value)} maxLength={100000} /><button className="primary" onClick={() => { if (current) setLibrary(value => ({ ...value, lyrics: { ...value.lyrics, [current.bvid]: lyricText } })); notify('歌词已保存'); }}>保存歌词</button></details></>}
-      {modal === 'settings' && <><span className="eyebrow">YOUR LIBRARY, YOUR WAY</span><h2>账户与歌单备份</h2><p>{account ? `已登录：${account.name}` : '当前未登录'}</p><label className="close-setting">关闭窗口时<select aria-label="关闭窗口时" value={closeBehavior} onChange={event => { const value = event.target.value as PlayerSession["closeBehavior"]; void window.desktop.setCloseBehavior(value).then(() => setCloseBehavior(value)).catch(fail); }}><option value="ask">每次询问</option><option value="tray">最小化到托盘，继续播放</option><option value="quit">退出程序</option></select></label><p className="small-note">启动后恢复上次歌曲与进度，点击播放继续。托盘菜单可控制播放或退出。</p><div className="settings-actions"><button className="secondary" onClick={() => run(window.desktop.saveLibrary(library).then(() => window.desktop.exportLibrary()).then(saved => { if (saved) notify('歌单备份已导出'); }))}><Download size={18} />导出歌单备份</button><button className="secondary" onClick={() => run(window.desktop.saveLibrary(library).then(() => window.desktop.importLibrary()).then(value => { if (value) { setLibrary(value); notify('歌单已合并导入'); } }))}><Upload size={18} />导入歌单备份</button>{account ? <button className="secondary danger" onClick={() => run(window.desktop.logout().then(() => { controller.pause(); setAccount(null); setFavorites([]); setModal(null); notify('已退出登录'); }))}><LogOut size={18} />退出登录</button> : <button className="primary" onClick={() => setModal('login')}>扫码登录</button>}</div><p className="small-note">备份包含歌单、播放历史和手动歌词，不包含登录凭据。<br />快捷键：空格播放 / 暂停，Ctrl + ← / → 切歌。<br />BBPlayer Desktop {__APP_VERSION__}</p><BackupPanel save={() => window.desktop.saveLibrary(library)} restore={value => { setLibrary(value); sessionSnapshot.current.library = value; setView(view.startsWith('playlist:') && !value.playlists.some(p => `playlist:${p.id}` === view) ? 'home' : view); notify('歌单已恢复'); }} /></>}
+      {modal === 'settings' && <><span className="eyebrow">YOUR LIBRARY, YOUR WAY</span><h2>账户与歌单备份</h2><p>{account ? `已登录：${account.name}` : '当前未登录'}</p><label className="close-setting">关闭窗口时<select aria-label="关闭窗口时" value={closeBehavior} onChange={event => { const value = event.target.value as PlayerSession["closeBehavior"]; void window.desktop.setCloseBehavior(value).then(() => setCloseBehavior(value)).catch(fail); }}><option value="ask">每次询问</option><option value="tray">最小化到托盘，继续播放</option><option value="quit">退出程序</option></select></label><p className="small-note">启动后恢复上次歌曲与进度，点击播放继续。托盘菜单可控制播放或退出。</p><div className="settings-actions"><button className="secondary" onClick={() => run(persistLibrary(library).then(() => window.desktop.exportLibrary()).then(saved => { if (saved) notify('歌单备份已导出'); }))}><Download size={18} />导出歌单备份</button><button className="secondary" onClick={() => run(persistLibrary(library).then(() => window.desktop.importLibrary()).then(value => { if (value) { setLibrary(value); notify('歌单已合并导入'); } }))}><Upload size={18} />导入歌单备份</button>{account ? <button className="secondary danger" onClick={() => run(window.desktop.logout().then(() => { controller.pause(); setAccount(null); setFavorites([]); setModal(null); notify('已退出登录'); }))}><LogOut size={18} />退出登录</button> : <button className="primary" onClick={() => setModal('login')}>扫码登录</button>}</div><p className="small-note">备份包含歌单、播放历史和手动歌词，不包含登录凭据。<br />快捷键：空格播放 / 暂停，Ctrl + ← / → 切歌。<br />BBPlayer Desktop {__APP_VERSION__}</p><BackupPanel save={() => persistLibrary(library)} restore={value => { setLibrary(value); sessionSnapshot.current.library = value; setView(view.startsWith('playlist:') && !value.playlists.some(p => `playlist:${p.id}` === view) ? 'home' : view); notify('歌单已恢复'); }} /></>}
     </section></div>}
   </div>;
 }

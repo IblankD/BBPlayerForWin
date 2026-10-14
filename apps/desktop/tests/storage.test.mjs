@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp, writeFile, readFile, readdir, rm } from 'node:fs/promises';
+import { mkdtemp, writeFile, readFile, readdir, rm, unlink } from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';
 import { LibraryStorage, decodeSession, encodeSession } from '../electron/storage.mjs';
@@ -36,6 +36,30 @@ test('unsupported schema refuses to overwrite or quarantine the original', async
   await writeFile(storage.file, original); await assert.rejects(storage.load(), /对应版本/);
   assert.equal(await readFile(storage.file, 'utf8'), original); assert.deepEqual(await storage.list(), []);
   assert.throws(() => decodeSession({ schemaVersion: 99 }), /对应版本/);
+});
+test('missing library restores an existing valid snapshot instead of creating an empty profile', async t => {
+  const { directory, storage } = await fixture(t); await storage.load(); await storage.backup(); await unlink(storage.file);
+  const reopened = new LibraryStorage(directory, () => ({ ...legacy(), playlists: [] }));
+  const result = await reopened.load(); assert.deepEqual(result.library, legacy()); assert.match(result.notice, /丢失/);
+  assert.deepEqual(JSON.parse(await readFile(storage.file)), { schemaVersion: 1, ...legacy() });
+});
+test('backup failure before restore commit leaves disk and memory unchanged', async t => {
+  for (const failureCall of [1, 2]) {
+    const { storage } = await fixture(t); await storage.load(); const target = await storage.backup();
+    await storage.save({ ...legacy(), volume: .17 }); const before = await readFile(storage.file, 'utf8');
+    const backup = storage.backup.bind(storage); let calls = 0;
+    storage.backup = async (...args) => { if (++calls === failureCall) throw new Error('disk full'); return backup(...args); };
+    await assert.rejects(storage.restore(target), /disk full/);
+    assert.equal(await readFile(storage.file, 'utf8'), before); assert.equal(storage.current.volume, .17);
+  }
+});
+test('atomic restore failure rolls back the staged snapshot and retains live data', async t => {
+  const { storage } = await fixture(t); await storage.load(); const target = await storage.backup();
+  await storage.save({ ...legacy(), volume: .17 }); const before = await readFile(storage.file, 'utf8');
+  storage.atomic = async () => { throw new Error('write denied'); };
+  await assert.rejects(storage.restore(target), /write denied/);
+  assert.equal(await readFile(storage.file, 'utf8'), before); assert.equal(storage.current.volume, .17);
+  const latest = (await storage.list())[0]; assert.equal(JSON.parse(await readFile(path.join(storage.backups, latest.id))).volume, .17);
 });
 test('automatic backup interval and retention avoid autosave floods; restore preserves replaced data', async t => {
   const { storage, advance } = await fixture(t); await storage.load();
